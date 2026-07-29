@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { getPDFLayoutConfig } from '../services/pdfConfig';
 import { gerarPDFMatricula } from '../services/pdfGenerator';
-import { getStoredAlunos, getStoredMatriculas, saveStoredAlunos, saveStoredMatriculas, dedupAlunos, dedupMatriculas, apiService } from '../services/api';
+import { getStoredAlunos, getStoredMatriculas, saveStoredAlunos, saveStoredMatriculas, apiService } from '../services/api';
 import { Aluno, Matricula } from '../types';
 import { uiFeedback } from '../services/uiFeedback';
 
@@ -58,20 +58,25 @@ export const ListaAlunos: React.FC = () => {
     }
   };
 
-  const handleLimparDuplicadosManual = () => {
-    const dedupedA = dedupAlunos(alunosSalvos);
-    const dedupedM = dedupMatriculas(matriculasSalvas);
-    const removidosCount = alunosSalvos.length - dedupedA.length;
-    setAlunosSalvos(dedupedA);
-    setMatriculasSalvas(dedupedM);
-    saveStoredAlunos(dedupedA);
-    saveStoredMatriculas(dedupedM);
-    setDedupNotice(
-      removidosCount > 0
-        ? `Desduplicação concluída! ${removidosCount} registro(s) mesclado(s).`
-        : 'Nenhum duplicado encontrado.'
-    );
-    setTimeout(() => setDedupNotice(''), 4500);
+  const handleLimparDuplicadosManual = async () => {
+    setSincronizando(true);
+    setDedupNotice('Verificando CPFs duplicados diretamente na planilha...');
+    uiFeedback.progress('Limpando duplicados', 'Analisando os CPFs cadastrados...', 35);
+    try {
+      const resultado = await apiService.removerAlunosDuplicados('Administrador');
+      uiFeedback.updateProgress('Limpando duplicados', 'Atualizando a lista de alunos...', 85);
+      carregarDadosLocais();
+      setDedupNotice(resultado.mensagem);
+      uiFeedback.notify(resultado.mensagem, resultado.removidos > 0 ? 'success' : 'info');
+    } catch (erro) {
+      const mensagem = erro instanceof Error ? erro.message : 'Erro ao remover duplicados.';
+      setDedupNotice(mensagem);
+      uiFeedback.notify(mensagem, 'error');
+    } finally {
+      setSincronizando(false);
+      uiFeedback.hideProgress();
+      setTimeout(() => setDedupNotice(''), 6000);
+    }
   };
 
   const handleBaixarPDFAluno = async (aluno: Aluno) => {

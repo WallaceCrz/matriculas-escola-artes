@@ -2,7 +2,7 @@ import { Aluno, Matricula } from '../types';
 import { CONFIG } from '../config';
 import { limpaCPF, calcularIdade, dataParaBR } from '../utils/cpfUtils';
 
-export const APP_SCRIPT_VERSION = 'EA_APP_2026_07_29_04';
+export const APP_SCRIPT_VERSION = 'EA_APP_2026_07_29_05';
 
 
 const fotoDataUrlCache = new Map<string, string>();
@@ -56,7 +56,8 @@ export function dedupAlunos(lista: Aluno[]): Aluno[] {
     const cpf = limpaCPF(aluno.cpf || '');
     const id = String(aluno.idAluno || '').trim();
     const nome = String(aluno.nomeCompleto || '').trim().toLowerCase();
-    const chave = id ? `id:${id}` : cpf ? `cpf:${cpf}` : `nome:${nome}|${aluno.dataNascimento || ''}`;
+    // CPF é a identidade principal do aluno. IDs diferentes com o mesmo CPF também são duplicados.
+    const chave = cpf ? `cpf:${cpf}` : id ? `id:${id}` : `nome:${nome}|${aluno.dataNascimento || ''}`;
     const anterior = mapa.get(chave);
     mapa.set(chave, anterior ? { ...anterior, ...aluno, fotoUrl: aluno.fotoUrl || anterior.fotoUrl } : aluno);
   }
@@ -314,6 +315,19 @@ export const apiService = {
       idAluno: String(json.idAluno || ''),
       idMatricula: String(json.idMatricula || ''),
       mensagem: json.mensagem || 'Matrícula salva.',
+    };
+  },
+
+
+  async removerAlunosDuplicados(usuario = 'Administrador'): Promise<{ sucesso: boolean; mensagem: string; removidos: number }> {
+    await exigirVersaoAtual();
+    const json = await postRemoto({ action: 'removerDuplicados', usuario });
+    if (!json.sucesso) throw new Error(json.mensagem || 'Não foi possível remover os registros duplicados.');
+    await this.sincronizarComPlanilha(true);
+    return {
+      sucesso: true,
+      mensagem: String(json.mensagem || 'Desduplicação concluída.'),
+      removidos: Number(json.removidos || 0),
     };
   },
 

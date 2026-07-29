@@ -1,4 +1,4 @@
-const APP_VERSION = 'EA_APP_2026_07_29_04';
+const APP_VERSION = 'EA_APP_2026_07_29_05';
 const ABA_ALUNOS = 'ALUNOS';
 const ABA_MATRICULAS = 'MATRICULAS';
 const ABA_EXCLUIDOS = 'EXCLUIDOS';
@@ -45,6 +45,7 @@ function doPost(e) {
     if (action === 'salvarAluno') return salvarAluno(body.aluno || {});
     if (action === 'salvarLogin') return salvarLogin(body.nome, body.login, body.senha);
     if (action === 'excluirLogin') return excluirLogin(body.id || body.login);
+    if (action === 'removerDuplicados') return removerDuplicados(body.usuario || 'Administrador');
     return json({ sucesso: false, mensagem: 'Ação POST desconhecida.', versao: APP_VERSION });
   } catch (err) {
     return json({ sucesso: false, mensagem: String(err), versao: APP_VERSION });
@@ -143,25 +144,53 @@ function obterRevisao() { return PropertiesService.getScriptProperties().getProp
 function marcarAlteracao() { PropertiesService.getScriptProperties().setProperty('REVISAO_DADOS', String(Date.now())); }
 
 function salvarAluno(a) {
-  const sh = SpreadsheetApp.getActive().getSheetByName(ABA_ALUNOS);
-  a.idAluno = a.idAluno || ('ALU-' + Date.now());
-  let linha = localizar(sh, 'ID_ALUNO', a.idAluno);
-  if (linha < 0 && a.cpf) {
-    const d = sh.getDataRange().getDisplayValues(), h = d[0];
-    const ci = h.indexOf('CPF'), ii = h.indexOf('ID_ALUNO'), cpf = String(a.cpf).replace(/\D/g, '');
-    for (let r = 1; r < d.length; r++) if (String(d[r][ci]).replace(/\D/g, '') === cpf) { linha = r + 1; a.idAluno = d[r][ii]; break; }
-  }
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sh = SpreadsheetApp.getActive().getSheetByName(ABA_ALUNOS);
+    const cpf = String(a.cpf || '').replace(/\D/g, '');
+    if (cpf.length !== 11) throw new Error('Informe um CPF válido com 11 dígitos.');
 
-  let fotoAnterior = '';
-  if (linha > 0) {
-    const h = headers(sh), fi = h.indexOf('Foto do aluno');
-    if (fi >= 0) fotoAnterior = String(sh.getRange(linha, fi + 1).getDisplayValue() || '');
+    const d = sh.getDataRange().getDisplayValues();
+    const h = d[0];
+    const ci = h.findIndex(function(v) { return normalizarCabecalho(v) === 'CPF'; });
+    const ii = h.findIndex(function(v) { return normalizarCabecalho(v) === 'ID_ALUNO'; });
+    const idRecebido = String(a.idAluno || '').trim();
+    const linhasMesmoCpf = [];
+
+    for (let r = 1; r < d.length; r++) {
+      if (String(d[r][ci] || '').replace(/\D/g, '') === cpf) {
+        linhasMesmoCpf.push({ linha: r + 1, idAluno: String(d[r][ii] || '').trim() });
+      }
+    }
+
+    // Cadastro novo nunca pode reutilizar silenciosamente um CPF já existente.
+    if (!idRecebido && linhasMesmoCpf.length > 0) {
+      throw new Error('Este CPF já está cadastrado para outro aluno. Pesquise o CPF e edite o cadastro existente.');
+    }
+
+    // Na edição, o CPF só pode pertencer ao próprio ID.
+    const conflito = linhasMesmoCpf.find(function(item) { return item.idAluno !== idRecebido; });
+    if (idRecebido && conflito) {
+      throw new Error('Não foi possível salvar: este CPF já pertence a outro cadastro. Use o botão Limpar Duplicados ou corrija o CPF.');
+    }
+
+    a.idAluno = idRecebido || ('ALU-' + Date.now());
+    let linha = localizar(sh, 'ID_ALUNO', a.idAluno);
+
+    let fotoAnterior = '';
+    if (linha > 0) {
+      const fi = h.findIndex(function(v) { return normalizarCabecalho(v) === normalizarCabecalho('Foto do aluno'); });
+      if (fi >= 0) fotoAnterior = String(sh.getRange(linha, fi + 1).getDisplayValue() || '');
+    }
+    const fotoNova = salvarFotoNoDrive(a.fotoUrl, a.idAluno);
+    if (fotoAnterior && fotoNova && fotoAnterior !== fotoNova && String(a.fotoUrl || '').startsWith('data:image/')) excluirFotoDrive(fotoAnterior);
+    escreverPorHeaders(sh, alunoObj(a, fotoNova), linha);
+    marcarAlteracao();
+    return { idAluno: a.idAluno, fotoUrl: fotoNova };
+  } finally {
+    lock.releaseLock();
   }
-  const fotoNova = salvarFotoNoDrive(a.fotoUrl, a.idAluno);
-  if (fotoAnterior && fotoNova && fotoAnterior !== fotoNova && String(a.fotoUrl || '').startsWith('data:image/')) excluirFotoDrive(fotoAnterior);
-  escreverPorHeaders(sh, alunoObj(a, fotoNova), linha);
-  marcarAlteracao();
-  return { idAluno: a.idAluno, fotoUrl: fotoNova };
 }
 
 function salvarAlunoEMatricula(a, m) {
@@ -173,6 +202,87 @@ function salvarAlunoEMatricula(a, m) {
   escreverPorHeaders(sh, matriculaObj(m), linha);
   marcarAlteracao();
   return json({ sucesso: true, mensagem: 'Aluno, foto e matrícula salvos.', idAluno: salvo.idAluno, idMatricula: m.idMatricula, fotoUrl: salvo.fotoUrl, versao: APP_VERSION });
+}
+
+
+function removerDuplicados(usuario) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const ss = SpreadsheetApp.getActive();
+    const sa = ss.getSheetByName(ABA_ALUNOS);
+    const sm = ss.getSheetByName(ABA_MATRICULAS);
+    const da = sa.getDataRange().getDisplayValues();
+    if (da.length <= 2) return json({ sucesso: true, removidos: 0, mensagem: 'Nenhum CPF duplicado encontrado.', versao: APP_VERSION });
+
+    const ha = da[0];
+    const cpfIdx = ha.findIndex(function(v) { return normalizarCabecalho(v) === 'CPF'; });
+    const idIdx = ha.findIndex(function(v) { return normalizarCabecalho(v) === 'ID_ALUNO'; });
+    if (cpfIdx < 0 || idIdx < 0) throw new Error('As colunas CPF ou ID_ALUNO não foram encontradas.');
+
+    const grupos = {};
+    for (let r = 1; r < da.length; r++) {
+      const cpf = String(da[r][cpfIdx] || '').replace(/\D/g, '');
+      if (cpf.length !== 11) continue;
+      if (!grupos[cpf]) grupos[cpf] = [];
+      grupos[cpf].push(r);
+    }
+
+    const dm = sm.getDataRange().getDisplayValues();
+    const hm = dm[0];
+    const matIdAlunoIdx = hm.findIndex(function(v) { return normalizarCabecalho(v) === 'ID_ALUNO'; });
+    let removidos = 0;
+    const linhasExcluir = [];
+
+    Object.keys(grupos).forEach(function(cpf) {
+      const rows = grupos[cpf];
+      if (rows.length < 2) return;
+
+      const principalIndex = rows[0];
+      const principal = da[principalIndex].slice();
+      let idPrincipal = String(principal[idIdx] || '').trim();
+      if (!idPrincipal) {
+        idPrincipal = 'ALU-' + Date.now() + '-' + principalIndex;
+        principal[idIdx] = idPrincipal;
+      }
+
+      rows.slice(1).forEach(function(idx) {
+        const duplicado = da[idx];
+        const idDuplicado = String(duplicado[idIdx] || '').trim();
+
+        // Completa campos vazios do registro principal com dados do duplicado.
+        for (let c = 0; c < principal.length; c++) {
+          if (!String(principal[c] || '').trim() && String(duplicado[c] || '').trim()) principal[c] = duplicado[c];
+        }
+
+        // Transfere matrículas para o ID que será mantido.
+        if (idDuplicado && matIdAlunoIdx >= 0) {
+          for (let mr = 1; mr < dm.length; mr++) {
+            if (String(dm[mr][matIdAlunoIdx] || '').trim() === idDuplicado) {
+              sm.getRange(mr + 1, matIdAlunoIdx + 1).setValue(idPrincipal);
+            }
+          }
+        }
+
+        registrarExclusao('ALUNO_DUPLICADO', objLinha(ha, duplicado), usuario);
+        linhasExcluir.push(idx + 1);
+        removidos++;
+      });
+
+      sa.getRange(principalIndex + 1, 1, 1, principal.length).setValues([principal]);
+    });
+
+    linhasExcluir.sort(function(a, b) { return b - a; }).forEach(function(linha) { sa.deleteRow(linha); });
+    if (removidos > 0) marcarAlteracao();
+    return json({
+      sucesso: true,
+      removidos: removidos,
+      mensagem: removidos > 0 ? (removidos + ' cadastro(s) duplicado(s) removido(s). As matrículas foram preservadas.') : 'Nenhum CPF duplicado encontrado.',
+      versao: APP_VERSION
+    });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function buscarAluno(termo) {

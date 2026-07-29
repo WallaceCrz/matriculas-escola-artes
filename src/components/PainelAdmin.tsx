@@ -43,7 +43,7 @@ import {
   gerarArquivoConfigCodigo,
 } from '../services/pdfConfig';
 import { gerarPDFMatricula } from '../services/pdfGenerator';
-import { dedupAlunos, dedupMatriculas, getStoredAlunos, getStoredMatriculas, saveStoredAlunos, saveStoredMatriculas, apiService } from '../services/api';
+import { getStoredAlunos, getStoredMatriculas, saveStoredAlunos, saveStoredMatriculas, apiService } from '../services/api';
 import { limpaCPF } from '../utils/cpfUtils';
 import { Aluno, Matricula } from '../types';
 import { SessaoUsuario } from '../services/auth';
@@ -195,24 +195,25 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
     }
   };
 
-  const handleLimparDuplicadosManual = () => {
-    const dedupedA = dedupAlunos(alunosSalvos);
-    const dedupedM = dedupMatriculas(matriculasSalvas);
-
-    const removidosCount = alunosSalvos.length - dedupedA.length;
-
-    setAlunosSalvos(dedupedA);
-    setMatriculasSalvas(dedupedM);
-
-    saveStoredAlunos(dedupedA);
-    saveStoredMatriculas(dedupedM);
-
-    setDedupNotice(
-      removidosCount > 0
-        ? `Desduplicação concluída! ${removidosCount} registro(s) duplicado(s) foi/foram mesclado(s) com sucesso.`
-        : 'Nenhum aluno duplicado foi encontrado. Seu banco de dados já está totalmente limpo!'
-    );
-    setTimeout(() => setDedupNotice(''), 4500);
+  const handleLimparDuplicadosManual = async () => {
+    setSincronizando(true);
+    setDedupNotice('Verificando CPFs duplicados diretamente na planilha...');
+    uiFeedback.progress('Limpando duplicados', 'Analisando os CPFs cadastrados...', 35);
+    try {
+      const resultado = await apiService.removerAlunosDuplicados('Administrador');
+      uiFeedback.updateProgress('Limpando duplicados', 'Atualizando a lista de alunos...', 85);
+      carregarDadosLocais();
+      setDedupNotice(resultado.mensagem);
+      uiFeedback.notify(resultado.mensagem, resultado.removidos > 0 ? 'success' : 'info');
+    } catch (erro) {
+      const mensagem = erro instanceof Error ? erro.message : 'Erro ao remover duplicados.';
+      setDedupNotice(mensagem);
+      uiFeedback.notify(mensagem, 'error');
+    } finally {
+      setSincronizando(false);
+      uiFeedback.hideProgress();
+      setTimeout(() => setDedupNotice(''), 6000);
+    }
   };
 
   const handleAtualizarTurmaETurno = (idAluno: string, novaTurma: string, novoTurno: string) => {
@@ -952,7 +953,7 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
                 type="button"
                 onClick={handleLimparDuplicadosManual}
                 className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
-                title="Procura e mescla automaticamente quaisquer cadastros repetidos por CPF/Nome"
+                title="Procura e mescla automaticamente quaisquer cadastros repetidos por CPF"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                 <span>Limpar Duplicados</span>

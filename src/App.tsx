@@ -44,6 +44,7 @@ const ALUNO_INITIAL_STATE: Aluno = {
   nomeMae: '',
   telefoneMae: '',
   fotoUrl: '',
+  responsavel: '',
   responsavelCadastro: '',
 };
 

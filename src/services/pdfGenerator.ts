@@ -615,7 +615,7 @@ export async function gerarPDFMatricula(
   // --- TERMO DE AUTORIZAÇÃO DE IMAGEM ---
   // O título e a seção de documentação foram removidos. Todo o bloco pode ser
   // reposicionado e redimensionado pelo Painel Admin.
-  const nomeResp = aluno.nomeMae || aluno.nomePai || '__________________________________________________';
+  const nomeResp = aluno.responsavel || aluno.nomeMae || aluno.nomePai || '__________________________________________________';
   const nomeAluno = aluno.nomeCompleto || '__________________________________________________';
   // A maioridade é sempre recalculada pela data de nascimento no momento
   // da geração do PDF. O campo idade salvo não é usado para essa decisão.

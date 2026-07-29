@@ -14,9 +14,11 @@ export interface SessaoUsuario {
   login: string;
   nome: string;
   admin: boolean;
+  expiresAt: number;
 }
 
-const SESSION_KEY = 'EA_SESSAO_USUARIO_V1';
+const SESSION_KEY = 'EA_SESSAO_USUARIO_V2';
+export const SESSION_DURATION_MS = 4 * 60 * 60 * 1000;
 
 function getAppsScriptUrl(): string {
   return CONFIG.DEFAULT_APPS_SCRIPT_URL.trim();
@@ -41,6 +43,11 @@ async function chamarPost(body: Record<string, unknown>): Promise<any> {
   });
   if (!resposta.ok) throw new Error('Não foi possível acessar a planilha de logins.');
   return resposta.json();
+}
+
+function salvarSessao(sessao: SessaoUsuario): SessaoUsuario {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(sessao));
+  return sessao;
 }
 
 export async function listarUsuarios(): Promise<UsuarioSistema[]> {
@@ -75,36 +82,40 @@ export async function excluirUsuario(id: string): Promise<void> {
 
 export async function autenticar(login: string, senha: string): Promise<SessaoUsuario | null> {
   const loginLimpo = login.trim().toLowerCase();
+  const expiresAt = Date.now() + SESSION_DURATION_MS;
 
-  // Administrador fixo e exclusivo do painel administrativo.
   if (loginLimpo === CONFIG.ADMIN_LOGIN && senha === CONFIG.ADMIN_PASSWORD) {
-    const sessao = { login: 'admin', nome: 'Administrador', admin: true };
-    localStorage.removeItem(SESSION_KEY);
-    sessionStorage.removeItem(SESSION_KEY);
-    return sessao;
+    return salvarSessao({ login: 'admin', nome: 'Administrador', admin: true, expiresAt });
   }
 
   try {
     const resposta = await chamarPost({ action: 'autenticarLogin', login: loginLimpo, senha });
     if (!resposta?.sucesso || !resposta?.usuario) return null;
-    const sessao: SessaoUsuario = {
+    return salvarSessao({
       login: String(resposta.usuario.login || loginLimpo),
       nome: String(resposta.usuario.nome || loginLimpo),
       admin: false,
-    };
-    localStorage.removeItem(SESSION_KEY);
-    sessionStorage.removeItem(SESSION_KEY);
-    return sessao;
+      expiresAt,
+    });
   } catch {
     return null;
   }
 }
 
 export function obterSessao(): SessaoUsuario | null {
-  // O login não é persistido: toda abertura ou atualização da página solicita autenticação.
-  localStorage.removeItem(SESSION_KEY);
-  sessionStorage.removeItem(SESSION_KEY);
-  return null;
+  try {
+    const bruto = localStorage.getItem(SESSION_KEY);
+    if (!bruto) return null;
+    const sessao = JSON.parse(bruto) as SessaoUsuario;
+    if (!sessao?.login || !sessao?.nome || !Number.isFinite(sessao.expiresAt) || sessao.expiresAt <= Date.now()) {
+      sair();
+      return null;
+    }
+    return sessao;
+  } catch {
+    sair();
+    return null;
+  }
 }
 
 export function sair(): void {

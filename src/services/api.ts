@@ -2,7 +2,7 @@ import { Aluno, Matricula } from '../types';
 import { CONFIG } from '../config';
 import { limpaCPF, calcularIdade, dataParaBR } from '../utils/cpfUtils';
 
-export const APP_SCRIPT_VERSION = 'EA_APP_2026_07_29_03';
+export const APP_SCRIPT_VERSION = 'EA_APP_2026_07_29_04';
 
 
 const fotoDataUrlCache = new Map<string, string>();
@@ -123,6 +123,7 @@ function mapearAlunoBruto(a: any, cpfFallback = ''): Aluno {
     nomeMae: String(a['Nome da Mãe'] || a.nomeMae || ''),
     telefoneMae: String(a['Telefone da Mãe'] || a.telefoneMae || ''),
     fotoUrl: normalizarUrlFoto(String(a['Foto do aluno'] || a.fotoUrl || '')),
+    responsavel: String(a.Responsavel || a.responsavel || ''),
     responsavelCadastro: String(a['Responsavel pelo cadastro'] || a.responsavelCadastro || ''),
   };
 }

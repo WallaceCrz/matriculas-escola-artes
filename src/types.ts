@@ -27,6 +27,7 @@ export interface Aluno {
   nomeMae: string;
   telefoneMae: string;
   fotoUrl: string; // Base64 apenas durante o cadastro; URL do Drive após salvar
+  responsavel?: string; // Responsável legal que assinará quando o aluno for menor.
   responsavelCadastro?: string;
 }
 

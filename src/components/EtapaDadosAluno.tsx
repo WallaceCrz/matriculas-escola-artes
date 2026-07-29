@@ -79,11 +79,18 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
       return next;
     });
     setAluno((prev) => {
-      const updated = { ...prev, [field]: value };
+      const updated = { ...prev, [field]: value } as Aluno;
       if (field === 'dataNascimento') {
         const dnForm = formatarDataBR(value);
         updated.dataNascimento = dnForm;
         updated.idade = calcularIdade(dnForm);
+        if (updated.idade >= 18) updated.responsavel = '';
+      }
+      if (field === 'nomeMae' && prev.responsavel && prev.responsavel === prev.nomeMae) {
+        updated.responsavel = String(value || '');
+      }
+      if (field === 'nomePai' && prev.responsavel && prev.responsavel === prev.nomePai) {
+        updated.responsavel = String(value || '');
       }
       return updated;
     });
@@ -93,6 +100,22 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
   const escolasFiltradas = listaEscolas.filter((esc) =>
     !termoEscola || esc.toLowerCase().includes(termoEscola)
   );
+
+  const alunoMenorDeIdade = Number.isFinite(aluno.idade) && aluno.idade < 18;
+  const responsavelAtual = (aluno.responsavel || '').trim();
+  const tipoResponsavel = responsavelAtual && responsavelAtual === (aluno.nomeMae || '').trim()
+    ? 'mae'
+    : responsavelAtual && responsavelAtual === (aluno.nomePai || '').trim()
+      ? 'pai'
+      : responsavelAtual
+        ? 'outro'
+        : '';
+
+  const selecionarResponsavel = (tipo: string) => {
+    if (tipo === 'mae') handleChange('responsavel', aluno.nomeMae || '');
+    else if (tipo === 'pai') handleChange('responsavel', aluno.nomePai || '');
+    else handleChange('responsavel', '');
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,6 +136,9 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
       { campo: 'cidade', rotulo: 'Cidade', valido: Boolean((aluno.cidade || '').trim()) },
       { campo: 'bairro', rotulo: 'Bairro', valido: Boolean((aluno.bairro || '').trim()) },
       { campo: 'nomeMae', rotulo: 'Nome da Mãe', valido: Boolean((aluno.nomeMae || '').trim()) },
+      ...(aluno.idade < 18
+        ? [{ campo: 'responsavel', rotulo: 'Responsável legal', valido: Boolean((aluno.responsavel || '').trim()) }]
+        : []),
     ];
 
     const faltando = obrigatorios.filter((item) => !item.valido);
@@ -634,6 +660,44 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
               />
             </div>
+
+
+            {alunoMenorDeIdade && (
+              <div className="md:col-span-3 rounded-xl border border-indigo-200 bg-indigo-50 p-4" data-required-field="responsavel">
+                <label className="block text-xs font-bold text-indigo-950 uppercase mb-2">
+                  Quem é o responsável legal que assinará? <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <select
+                    value={tipoResponsavel}
+                    onChange={(e) => selecionarResponsavel(e.target.value)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none ${estiloObrigatorio('responsavel')}`}
+                  >
+                    <option value="">Selecione...</option>
+                    <option value="mae" disabled={!aluno.nomeMae.trim()}>Mãe</option>
+                    <option value="pai" disabled={!aluno.nomePai.trim()}>Pai</option>
+                    <option value="outro">Outro responsável</option>
+                  </select>
+
+                  <div className="md:col-span-2">
+                    {tipoResponsavel === 'outro' ? (
+                      <input
+                        type="text"
+                        value={aluno.responsavel || ''}
+                        onChange={(e) => handleChange('responsavel', e.target.value)}
+                        placeholder="Nome completo do responsável"
+                        className={`w-full px-3.5 py-2.5 rounded-xl border text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none ${estiloObrigatorio('responsavel')}`}
+                      />
+                    ) : (
+                      <div className="w-full px-3.5 py-2.5 rounded-xl border border-indigo-200 bg-white text-sm text-slate-700 min-h-[42px]">
+                        {aluno.responsavel || 'Escolha mãe, pai ou outro responsável.'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-indigo-700 mt-2">Este nome será usado no termo de autorização e na linha de assinatura do PDF.</p>
+              </div>
+            )}
           </div>
         </section>
       </div>

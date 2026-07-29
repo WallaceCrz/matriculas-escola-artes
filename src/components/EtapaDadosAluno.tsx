@@ -37,6 +37,7 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
   const [mostrarAutocompleteEscola, setMostrarAutocompleteEscola] = useState(false);
   const [listaEscolas, setListaEscolas] = useState<string[]>([]);
   const [camposInvalidos, setCamposInvalidos] = useState<Set<string>>(new Set());
+  const [tipoResponsavelSelecionado, setTipoResponsavelSelecionado] = useState<'mae' | 'pai' | 'outro' | ''>('');
   const autocompleteRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -103,7 +104,7 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
 
   const alunoMenorDeIdade = Number.isFinite(aluno.idade) && aluno.idade < 18;
   const responsavelAtual = (aluno.responsavel || '').trim();
-  const tipoResponsavel = responsavelAtual && responsavelAtual === (aluno.nomeMae || '').trim()
+  const tipoResponsavelInferido: 'mae' | 'pai' | 'outro' | '' = responsavelAtual && responsavelAtual === (aluno.nomeMae || '').trim()
     ? 'mae'
     : responsavelAtual && responsavelAtual === (aluno.nomePai || '').trim()
       ? 'pai'
@@ -111,9 +112,29 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
         ? 'outro'
         : '';
 
+  const tipoResponsavel = tipoResponsavelSelecionado || tipoResponsavelInferido;
+
+  useEffect(() => {
+    if (!alunoMenorDeIdade) {
+      setTipoResponsavelSelecionado('');
+      return;
+    }
+
+    if (tipoResponsavelInferido) {
+      setTipoResponsavelSelecionado(tipoResponsavelInferido);
+      return;
+    }
+
+    // Mantém a opção "Outro responsável" selecionada enquanto o nome ainda está vazio.
+    setTipoResponsavelSelecionado((atual) => atual === 'outro' ? 'outro' : '');
+  }, [alunoMenorDeIdade, tipoResponsavelInferido]);
+
   const selecionarResponsavel = (tipo: string) => {
-    if (tipo === 'mae') handleChange('responsavel', aluno.nomeMae || '');
-    else if (tipo === 'pai') handleChange('responsavel', aluno.nomePai || '');
+    const novoTipo = tipo as 'mae' | 'pai' | 'outro' | '';
+    setTipoResponsavelSelecionado(novoTipo);
+
+    if (novoTipo === 'mae') handleChange('responsavel', aluno.nomeMae || '');
+    else if (novoTipo === 'pai') handleChange('responsavel', aluno.nomePai || '');
     else handleChange('responsavel', '');
   };
 

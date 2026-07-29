@@ -1,0 +1,10 @@
+[
+  {
+    "id": "USR-ADMIN",
+    "login": "admin",
+    "senha": "admin321",
+    "nome": "Administrador",
+    "criadoEm": "2026-07-28T00:00:00.000Z",
+    "admin": true
+  }
+]

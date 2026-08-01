@@ -5,7 +5,7 @@ export const CONFIG = {
   ANO_SEMESTRE_DEFAULT: '2026.2',
 
   // Única fonte da URL do Web App. Atualize este valor após implantar o Apps Script.
-  DEFAULT_APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyRKUGvHpZGxjs0LMWI-Xbg6RFLNQJvh7t7FLsJHtgGGHwUFCJEx4rWm8hf0GR_tRm8/exec',
+  DEFAULT_APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwQDS__tk5MaYoAL7_auL3ORo7mJlA6I9Vue5eDcPJyRDDNYonMwaPmbofQeHDgLCHj1g/exec',
 
   // Administrador local, mantido no código conforme solicitado.
   ADMIN_LOGIN: 'admin',

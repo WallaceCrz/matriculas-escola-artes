@@ -3,6 +3,7 @@ import { formatarCPF, limpaCPF, validarCPF } from '../utils/cpfUtils';
 import { apiService } from '../services/api';
 import { Aluno } from '../types';
 import { Search, UserPlus, UserCheck, AlertCircle, Sparkles } from 'lucide-react';
+import { AutocompleteDropdown } from './AutocompleteDropdown';
 
 interface EtapaBuscaCPFProps {
   cpf: string;
@@ -96,17 +97,22 @@ export const EtapaBuscaCPF: React.FC<EtapaBuscaCPFProps> = ({
             CPF ou nome do aluno <span className="text-rose-500">*</span>
           </label>
           <div className="relative">
-            <input
-              id="cpf-input"
-              type="text"
+            <AutocompleteDropdown
               value={cpf}
-              onChange={handleCpfChange}
+              onChange={(valor) => handleCpfChange({ target: { value: valor } } as React.ChangeEvent<HTMLInputElement>)}
+              options={sugestoes.map((a) => ({ id: a.idAluno, label: a.nomeCompleto, secondary: `CPF: ${a.cpf}` }))}
+              onSelect={(opcao) => {
+                const aluno = sugestoes.find((a) => a.idAluno === opcao.id);
+                if (aluno) {
+                  setCpf(aluno.nomeCompleto);
+                  setResultado({ buscado: true, encontrado: true, aluno });
+                  setErro('');
+                }
+              }}
               placeholder="Digite o CPF ou o nome"
-              list="alunos-autocomplete"
-              className="w-full px-4 py-3 rounded-xl border border-slate-300 text-slate-900 text-lg font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-              required
+              inputClassName="w-full px-4 py-3 rounded-xl border border-slate-300 text-slate-900 text-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
+              maxResults={10}
             />
-            <datalist id="alunos-autocomplete">{sugestoes.map(a => <option key={a.idAluno} value={a.nomeCompleto}>{a.cpf}</option>)}</datalist>
             <button
               type="submit"
               disabled={carregando || !cpf}

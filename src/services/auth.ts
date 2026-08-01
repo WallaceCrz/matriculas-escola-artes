@@ -20,6 +20,21 @@ export interface SessaoUsuario {
 const SESSION_KEY = 'EA_SESSAO_USUARIO_V2';
 export const SESSION_DURATION_MS = 4 * 60 * 60 * 1000;
 
+let preCarregamentoPromise: Promise<void> | null = null;
+let loginsPreCarregados = new Set<string>();
+
+export function preCarregarAutenticacao(): Promise<void> {
+  if (preCarregamentoPromise) return preCarregamentoPromise;
+  preCarregamentoPromise = chamarGet({ action: 'listarLogins', warmup: String(Date.now()) })
+    .then((resposta) => {
+      if (resposta?.sucesso && Array.isArray(resposta.usuarios)) {
+        loginsPreCarregados = new Set(resposta.usuarios.map((u: UsuarioSistema) => String(u.login || '').trim().toLowerCase()).filter(Boolean));
+      }
+    })
+    .catch(() => undefined);
+  return preCarregamentoPromise;
+}
+
 function getAppsScriptUrl(): string {
   return CONFIG.DEFAULT_APPS_SCRIPT_URL.trim();
 }
@@ -89,6 +104,9 @@ export async function autenticar(login: string, senha: string): Promise<SessaoUs
   }
 
   try {
+    await preCarregarAutenticacao();
+    // A lista pré-carregada aquece a conexão com o Apps Script e reduz o tempo do primeiro login.
+    // A senha continua sendo validada exclusivamente pelo Apps Script.
     const resposta = await chamarPost({ action: 'autenticarLogin', login: loginLimpo, senha });
     if (!resposta?.sucesso || !resposta?.usuario) return null;
     return salvarSessao({

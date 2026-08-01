@@ -157,6 +157,9 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
       { campo: 'cidade', rotulo: 'Cidade', valido: Boolean((aluno.cidade || '').trim()) },
       { campo: 'bairro', rotulo: 'Bairro', valido: Boolean((aluno.bairro || '').trim()) },
       { campo: 'nomeMae', rotulo: 'Nome da Mãe', valido: Boolean((aluno.nomeMae || '').trim()) },
+      ...((aluno.rg || '').trim()
+        ? [{ campo: 'orgaoEmissor', rotulo: 'Órgão Emissor', valido: Boolean((aluno.orgaoEmissor || '').trim()) }]
+        : []),
       ...(aluno.idade < 18
         ? [{ campo: 'responsavel', rotulo: 'Responsável legal', valido: Boolean((aluno.responsavel || '').trim()) }]
         : []),
@@ -276,29 +279,36 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                RG
+                RG <span className="normal-case font-medium text-slate-400">(opcional)</span>
               </label>
               <input
                 type="text"
                 value={aluno.rg}
-                onChange={(e) => handleChange('rg', e.target.value)}
+                onChange={(e) => {
+                  handleChange('rg', e.target.value);
+                  if (!e.target.value.trim()) handleChange('orgaoEmissor', '');
+                }}
                 placeholder="Número do RG"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                Órgão Emissor
-              </label>
-              <input
-                type="text"
-                value={aluno.orgaoEmissor}
-                onChange={(e) => handleChange('orgaoEmissor', e.target.value)}
-                placeholder="Ex: SDS/PE"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
-              />
-            </div>
+            {(aluno.rg || '').trim() && (
+              <div data-required-field="orgaoEmissor" className="animate-in fade-in slide-in-from-top-1 duration-200">
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Órgão Emissor <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={aluno.orgaoEmissor}
+                  onChange={(e) => handleChange('orgaoEmissor', e.target.value)}
+                  placeholder="Ex: SDS/PE"
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:ring-2 focus:ring-amber-500 outline-none ${estiloObrigatorio('orgaoEmissor')}`}
+                />
+                <p className="text-[11px] text-slate-500 mt-1">Obrigatório porque o RG foi informado.</p>
+              </div>
+            )}
 
             <div data-required-field="corEtnia">
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
@@ -346,7 +356,6 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
               <div className="relative">
                 <input
                   type="text"
-                  list="escolas-cadastradas-list"
                   value={aluno.escolaEstuda || ''}
                   onChange={(e) => {
                     handleChange('escolaEstuda', e.target.value);
@@ -357,11 +366,6 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
                   className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-medium"
                 />
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                <datalist id="escolas-cadastradas-list">
-                  {listaEscolas.map((esc, i) => (
-                    <option key={i} value={esc} />
-                  ))}
-                </datalist>
               </div>
 
               {mostrarAutocompleteEscola && escolasFiltradas.length > 0 && (

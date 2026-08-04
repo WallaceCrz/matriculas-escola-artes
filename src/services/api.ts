@@ -65,7 +65,7 @@ export function dedupAlunos(lista: Aluno[]): Aluno[] {
 }
 
 function chaveMatricula(m: Matricula): string {
-  return [m.idAluno, m.curso, m.horario, m.turma || '', normalizarAnoSemestre(m.anoSemestre)]
+  return [m.idAluno, m.curso, m.horario, normalizarAnoSemestre(m.anoSemestre)]
     .map((v) => String(v || '').trim().toLowerCase())
     .join('|');
 }
@@ -340,6 +340,17 @@ export const apiService = {
 
   async salvarAlunoEMatricula(aluno: Aluno, matricula: Matricula): Promise<{ sucesso: boolean; idAluno: string; idMatricula: string; mensagem: string }> {
     await exigirVersaoAtual();
+    await this.sincronizarComPlanilha(true);
+    const duplicada = cacheMatriculas.find((existente) =>
+      chaveMatricula(existente) === chaveMatricula({ ...matricula, idAluno: aluno.idAluno })
+      && existente.idMatricula !== matricula.idMatricula
+    );
+    if (duplicada) {
+      throw new Error(
+        `Este aluno já está matriculado em ${matricula.curso} (${matricula.horario}) no período ${normalizarAnoSemestre(matricula.anoSemestre)}. `
+        + `Matrícula existente: ${duplicada.idMatricula}.`
+      );
+    }
     const json = await postRemoto({ action: 'salvarAlunoEMatricula', aluno, matricula });
     if (!json.sucesso) throw new Error(json.mensagem || 'Não foi possível salvar a matrícula.');
     await this.sincronizarComPlanilha(true);

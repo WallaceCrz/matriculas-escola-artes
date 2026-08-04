@@ -174,7 +174,28 @@ async function postRemotoComNovaTentativa(body: Record<string, unknown>): Promis
     // A atualização de aluno é idempotente quando conserva o ID. Se a conexão
     // cair depois de o Apps Script gravar, repetir apenas atualiza a mesma linha.
     if (!(error instanceof TypeError)) throw error;
-    return postRemoto(body);
+    try {
+      return await postRemoto(body);
+    } catch (segundaFalha) {
+      if (!(segundaFalha instanceof TypeError)) throw segundaFalha;
+
+      // Alguns navegadores bloqueiam a leitura da resposta quando o Web App do
+      // Apps Script redireciona o POST para googleusercontent.com. O modo
+      // no-cors ainda envia a gravação; a edição é segura para repetição porque
+      // salvarAluno conserva o ID e nunca cria uma matrícula.
+      const base = CONFIG.DEFAULT_APPS_SCRIPT_URL.trim();
+      await fetch(base, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ ...body, clientVersion: APP_SCRIPT_VERSION }),
+      });
+      return {
+        sucesso: true,
+        idAluno: String((body.aluno as Aluno | undefined)?.idAluno || ''),
+        mensagem: 'Alterações enviadas. A lista será sincronizada em seguida.',
+      };
+    }
   }
 }
 

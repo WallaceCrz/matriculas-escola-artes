@@ -197,11 +197,52 @@ function salvarAlunoEMatricula(a, m) {
   const salvo = salvarAluno(a);
   const sh = SpreadsheetApp.getActive().getSheetByName(ABA_MATRICULAS);
   m.idAluno = salvo.idAluno;
-  m.idMatricula = m.idMatricula || ('MAT-' + Date.now());
-  const linha = localizar(sh, 'ID_MATRICULA', m.idMatricula);
-  escreverPorHeaders(sh, matriculaObj(m), linha);
-  marcarAlteracao();
-  return json({ sucesso: true, mensagem: 'Aluno, foto e matrícula salvos.', idAluno: salvo.idAluno, idMatricula: m.idMatricula, fotoUrl: salvo.fotoUrl, versao: APP_VERSION });
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const d = sh.getDataRange().getDisplayValues();
+    const h = d[0];
+    const indice = function(nome) {
+      return h.findIndex(function(valor) { return normalizarCabecalho(valor) === normalizarCabecalho(nome); });
+    };
+    const idx = {
+      idMatricula: indice('ID_MATRICULA'),
+      idAluno: indice('ID_ALUNO'),
+      curso: indice('Curso'),
+      horario: indice('Horário'),
+      periodo: indice('Ano/Semestre')
+    };
+    const normalizar = function(valor) { return String(valor || '').trim().toLocaleUpperCase('pt-BR'); };
+    const idRecebido = String(m.idMatricula || '').trim();
+    const duplicadas = [];
+
+    for (let r = 1; r < d.length; r++) {
+      const mesmaTurma = normalizar(d[r][idx.idAluno]) === normalizar(m.idAluno)
+        && normalizar(d[r][idx.curso]) === normalizar(m.curso)
+        && normalizar(d[r][idx.horario]) === normalizar(m.horario)
+        && normalizar(d[r][idx.periodo]) === normalizar(m.anoSemestre);
+      const idExistente = String(d[r][idx.idMatricula] || '').trim();
+      if (mesmaTurma && idExistente !== idRecebido) duplicadas.push(idExistente);
+    }
+
+    if (duplicadas.length > 0) {
+      return json({
+        sucesso: false,
+        mensagem: 'Este aluno já está matriculado nesta turma e período. Matrícula existente: ' + duplicadas[0] + '.',
+        idMatriculaExistente: duplicadas[0],
+        totalDuplicadasEncontradas: duplicadas.length,
+        versao: APP_VERSION
+      });
+    }
+
+    m.idMatricula = idRecebido || ('MAT-' + Date.now());
+    const linha = localizar(sh, 'ID_MATRICULA', m.idMatricula);
+    escreverPorHeaders(sh, matriculaObj(m), linha);
+    marcarAlteracao();
+    return json({ sucesso: true, mensagem: 'Aluno, foto e matrícula salvos.', idAluno: salvo.idAluno, idMatricula: m.idMatricula, fotoUrl: salvo.fotoUrl, versao: APP_VERSION });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 

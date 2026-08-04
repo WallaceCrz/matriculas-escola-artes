@@ -65,7 +65,7 @@ export function dedupAlunos(lista: Aluno[]): Aluno[] {
 }
 
 function chaveMatricula(m: Matricula): string {
-  return [m.idAluno, m.curso, m.horario, m.turma || '', normalizarAnoSemestre(m.anoSemestre)]
+  return [m.idAluno, m.curso, m.horario, normalizarAnoSemestre(m.anoSemestre)]
     .map((v) => String(v || '').trim().toLowerCase())
     .join('|');
 }
@@ -165,6 +165,38 @@ async function postRemoto(body: Record<string, unknown>): Promise<any> {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ ...body, clientVersion: APP_SCRIPT_VERSION }),
   }));
+}
+
+async function postRemotoComNovaTentativa(body: Record<string, unknown>): Promise<any> {
+  try {
+    return await postRemoto(body);
+  } catch (error) {
+    // A atualização de aluno é idempotente quando conserva o ID. Se a conexão
+    // cair depois de o Apps Script gravar, repetir apenas atualiza a mesma linha.
+    if (!(error instanceof TypeError)) throw error;
+    try {
+      return await postRemoto(body);
+    } catch (segundaFalha) {
+      if (!(segundaFalha instanceof TypeError)) throw segundaFalha;
+
+      // Alguns navegadores bloqueiam a leitura da resposta quando o Web App do
+      // Apps Script redireciona o POST para googleusercontent.com. O modo
+      // no-cors ainda envia a gravação; a edição é segura para repetição porque
+      // salvarAluno conserva o ID e nunca cria uma matrícula.
+      const base = CONFIG.DEFAULT_APPS_SCRIPT_URL.trim();
+      await fetch(base, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ ...body, clientVersion: APP_SCRIPT_VERSION }),
+      });
+      return {
+        sucesso: true,
+        idAluno: String((body.aluno as Aluno | undefined)?.idAluno || ''),
+        mensagem: 'Alterações enviadas. A lista será sincronizada em seguida.',
+      };
+    }
+  }
 }
 
 async function exigirVersaoAtual(): Promise<void> {
@@ -299,14 +331,26 @@ export const apiService = {
 
   async salvarAlunoSomente(aluno: Aluno): Promise<{ sucesso: boolean; idAluno: string; mensagem: string }> {
     await exigirVersaoAtual();
-    const json = await postRemoto({ action: 'salvarAluno', aluno });
+    const json = await postRemotoComNovaTentativa({ action: 'salvarAluno', aluno });
     if (!json.sucesso) throw new Error(json.mensagem || 'Não foi possível salvar o aluno.');
-    await this.sincronizarComPlanilha(true);
+    cacheAlunos = dedupAlunos([...cacheAlunos, mapearAlunoBruto(aluno)]);
+    void this.sincronizarComPlanilha(true);
     return { sucesso: true, idAluno: String(json.idAluno || aluno.idAluno), mensagem: json.mensagem || 'Aluno salvo.' };
   },
 
   async salvarAlunoEMatricula(aluno: Aluno, matricula: Matricula): Promise<{ sucesso: boolean; idAluno: string; idMatricula: string; mensagem: string }> {
     await exigirVersaoAtual();
+    await this.sincronizarComPlanilha(true);
+    const duplicada = cacheMatriculas.find((existente) =>
+      chaveMatricula(existente) === chaveMatricula({ ...matricula, idAluno: aluno.idAluno })
+      && existente.idMatricula !== matricula.idMatricula
+    );
+    if (duplicada) {
+      throw new Error(
+        `Este aluno já está matriculado em ${matricula.curso} (${matricula.horario}) no período ${normalizarAnoSemestre(matricula.anoSemestre)}. `
+        + `Matrícula existente: ${duplicada.idMatricula}.`
+      );
+    }
     const json = await postRemoto({ action: 'salvarAlunoEMatricula', aluno, matricula });
     if (!json.sucesso) throw new Error(json.mensagem || 'Não foi possível salvar a matrícula.');
     await this.sincronizarComPlanilha(true);

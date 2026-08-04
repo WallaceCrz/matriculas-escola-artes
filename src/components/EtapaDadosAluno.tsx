@@ -10,6 +10,7 @@ interface EtapaDadosAlunoProps {
   setAluno: React.Dispatch<React.SetStateAction<Aluno>>;
   onVoltar: () => void;
   onAvancar: () => void;
+  editando?: boolean;
 }
 
 const SERIES_OPCOES = [
@@ -33,6 +34,7 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
   setAluno,
   onVoltar,
   onAvancar,
+  editando = false,
 }) => {
   const [mostrarAutocompleteEscola, setMostrarAutocompleteEscola] = useState(false);
   const [listaEscolas, setListaEscolas] = useState<string[]>([]);
@@ -741,8 +743,8 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
           type="submit"
           className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow transition-all flex items-center gap-2"
         >
-          <span>Avançar para Matrícula</span>
-          <span>→</span>
+          <span>{editando ? 'Salvar alterações' : 'Avançar para Matrícula'}</span>
+          {!editando && <span>→</span>}
         </button>
       </div>
     </form>

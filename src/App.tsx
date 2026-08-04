@@ -192,6 +192,7 @@ export default function App() {
                 setAluno={setAluno}
                 onVoltar={() => setEtapaAtual(2)}
                 onAvancar={() => editandoAluno ? handleSalvarEdicaoAluno() : setEtapaAtual(4)}
+                editando={editandoAluno}
               />
             )}
 

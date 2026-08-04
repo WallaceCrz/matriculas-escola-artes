@@ -167,6 +167,17 @@ async function postRemoto(body: Record<string, unknown>): Promise<any> {
   }));
 }
 
+async function postRemotoComNovaTentativa(body: Record<string, unknown>): Promise<any> {
+  try {
+    return await postRemoto(body);
+  } catch (error) {
+    // A atualização de aluno é idempotente quando conserva o ID. Se a conexão
+    // cair depois de o Apps Script gravar, repetir apenas atualiza a mesma linha.
+    if (!(error instanceof TypeError)) throw error;
+    return postRemoto(body);
+  }
+}
+
 async function exigirVersaoAtual(): Promise<void> {
   if (!statusVersao.verificado) await apiService.verificarVersaoAppsScript();
   if (!statusVersao.atualizado) {
@@ -299,9 +310,10 @@ export const apiService = {
 
   async salvarAlunoSomente(aluno: Aluno): Promise<{ sucesso: boolean; idAluno: string; mensagem: string }> {
     await exigirVersaoAtual();
-    const json = await postRemoto({ action: 'salvarAluno', aluno });
+    const json = await postRemotoComNovaTentativa({ action: 'salvarAluno', aluno });
     if (!json.sucesso) throw new Error(json.mensagem || 'Não foi possível salvar o aluno.');
-    await this.sincronizarComPlanilha(true);
+    cacheAlunos = dedupAlunos([...cacheAlunos, mapearAlunoBruto(aluno)]);
+    void this.sincronizarComPlanilha(true);
     return { sucesso: true, idAluno: String(json.idAluno || aluno.idAluno), mensagem: json.mensagem || 'Aluno salvo.' };
   },
 

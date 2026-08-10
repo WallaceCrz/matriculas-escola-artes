@@ -91,6 +91,8 @@ export default function App() {
       .catch(() => setAppsScriptConectado(false));
   }, []);
 
+  useEffect(() => apiService.iniciarBackupAutomatico(), []);
+
   const handleAlunoEncontrado = (alunoEncontrado: Aluno) => {
     setAluno(alunoEncontrado);
     setCpf(alunoEncontrado.cpf);
@@ -100,6 +102,15 @@ export default function App() {
   const handleNovoAluno = () => {
     setAluno({ ...ALUNO_INITIAL_STATE, cpf });
     setEtapaAtual(2); // Avança para foto
+  };
+
+  const handleCadastrarNovoConsulta = (cpfNovo: string) => {
+    setCpf(cpfNovo);
+    setAluno({ ...ALUNO_INITIAL_STATE, cpf: cpfNovo });
+    setMatricula(MATRICULA_INITIAL_STATE);
+    setEditandoAluno(false);
+    setModoVisualizacao('matriculas');
+    setEtapaAtual(2);
   };
 
   const handleFinalizarMatricula = async (matriculaPassada?: Matricula) => {
@@ -125,12 +136,12 @@ export default function App() {
   };
 
   const handleEditarAluno = (alunoEditar: Aluno) => {
-    setAluno(alunoEditar); setCpf(alunoEditar.cpf); setEditandoAluno(true); setModoVisualizacao('matriculas'); setEtapaAtual(3);
+    setAluno(alunoEditar); setCpf(alunoEditar.cpf); setEditandoAluno(true); setModoVisualizacao('matriculas'); setEtapaAtual(2);
   };
 
   const handleAdicionarMatricula = (alunoMatricular: Aluno) => {
     setAluno(alunoMatricular); setCpf(alunoMatricular.cpf); setMatricula({ ...MATRICULA_INITIAL_STATE, idAluno: alunoMatricular.idAluno, responsavelMatricula: sessao?.nome || 'Não informado' });
-    setEditandoAluno(false); setModoVisualizacao('matriculas'); setEtapaAtual(4);
+    setEditandoAluno(false); setModoVisualizacao('matriculas'); setEtapaAtual(2);
   };
 
   const handleEditarMatricula = (alunoMatricula: Aluno, matriculaEditar: Matricula) => {
@@ -200,7 +211,7 @@ export default function App() {
       <main className="flex-1 min-w-0 px-4 py-6">
         {modoVisualizacao === 'inicio' ? <MenuInicial sessao={sessao} onAbrir={setModoVisualizacao}/>
         : modoVisualizacao === 'turmas' ? <TurmasPage sessao={sessao} onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula}/>
-        : modoVisualizacao === 'consulta' ? <ConsultaAlunos onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula}/>
+        : modoVisualizacao === 'consulta' ? <ConsultaAlunos onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onCadastrarNovo={handleCadastrarNovoConsulta} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula}/>
         : modoVisualizacao === 'frequencia' ? <FrequenciaEmProgresso/>
         : modoVisualizacao === 'configuracoes' ? (
           sessao.admin ? <PainelAdmin modo="admin" onExibirAluno={setAlunoEmFicha}/> : <div className="max-w-xl mx-auto bg-rose-50 border border-rose-200 rounded-xl p-6 text-rose-800 font-bold">Acesso restrito ao administrador.</div>

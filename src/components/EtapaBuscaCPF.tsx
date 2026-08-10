@@ -87,7 +87,7 @@ export const EtapaBuscaCPF: React.FC<EtapaBuscaCPFProps> = ({
         </span>
         <h2 className="text-2xl font-bold text-slate-900">Localizar aluno</h2>
         <p className="text-slate-600 text-sm mt-1">
-          Pesquise pelo CPF ou pelo nome. O campo de nome possui autocomplete com os alunos cadastrados.
+          Para alunos novos, preencha o CPF. Para matricular um aluno cadastrado, pesquise pelo nome ou CPF.
         </p>
       </div>
 
@@ -100,7 +100,7 @@ export const EtapaBuscaCPF: React.FC<EtapaBuscaCPFProps> = ({
             <AutocompleteDropdown
               value={cpf}
               onChange={(valor) => handleCpfChange({ target: { value: valor } } as React.ChangeEvent<HTMLInputElement>)}
-              options={sugestoes.map((a) => ({ id: a.idAluno, label: a.nomeCompleto, secondary: `CPF: ${a.cpf}` }))}
+              options={sugestoes.map((a) => ({ id: a.idAluno, label: a.nomeCompleto, secondary: `CPF: ${a.cpf}`, imageUrl: a.fotoUrl }))}
               onSelect={(opcao) => {
                 const aluno = sugestoes.find((a) => a.idAluno === opcao.id);
                 if (aluno) {
@@ -112,6 +112,7 @@ export const EtapaBuscaCPF: React.FC<EtapaBuscaCPFProps> = ({
               placeholder="Digite o CPF ou o nome"
               inputClassName="w-full px-4 py-3 rounded-xl border border-slate-300 text-slate-900 text-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
               maxResults={10}
+              minChars={2}
             />
             <button
               type="submit"

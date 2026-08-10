@@ -5,6 +5,7 @@ export interface AutocompleteOption {
   id: string;
   label: string;
   secondary?: string;
+  imageUrl?: string;
 }
 
 interface Props {
@@ -17,6 +18,7 @@ interface Props {
   maxResults?: number;
   disabled?: boolean;
   showSearchIcon?: boolean;
+  minChars?: number;
 }
 
 const normalizar = (valor: string) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -31,6 +33,7 @@ export const AutocompleteDropdown: React.FC<Props> = ({
   maxResults = 8,
   disabled = false,
   showSearchIcon = false,
+  minChars = 0,
 }) => {
   const [aberto, setAberto] = useState(false);
   const [indiceAtivo, setIndiceAtivo] = useState(-1);
@@ -38,7 +41,7 @@ export const AutocompleteDropdown: React.FC<Props> = ({
 
   const filtradas = useMemo(() => {
     const termo = normalizar(value);
-    if (!termo) return options.slice(0, maxResults);
+    if (termo.length < minChars) return [];
     return options.filter((item) => normalizar(`${item.label} ${item.secondary || ''}`).includes(termo)).slice(0, maxResults);
   }, [value, options, maxResults]);
 
@@ -104,8 +107,13 @@ export const AutocompleteDropdown: React.FC<Props> = ({
               onClick={() => selecionar(item)}
               className={`w-full px-3.5 py-2.5 text-left border-b border-slate-100 last:border-0 ${index === indiceAtivo ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
             >
-              <div className="font-semibold text-sm text-slate-900 truncate">{item.label}</div>
-              {item.secondary && <div className="text-xs text-slate-500 mt-0.5 truncate">{item.secondary}</div>}
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 shrink-0 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center text-xs font-black text-slate-400">
+                  {item.imageUrl ? <img src={item.imageUrl} alt="" className="w-full h-full object-cover"/> : item.label.slice(0,1)}
+                </div>
+                <div className="min-w-0"><div className="font-semibold text-sm text-slate-900 truncate">{item.label}</div>
+                {item.secondary && <div className="text-xs text-slate-500 mt-0.5 truncate">{item.secondary}</div>}</div>
+              </div>
             </button>
           ))}
         </div>

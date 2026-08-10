@@ -1,14 +1,80 @@
-import React,{useEffect,useMemo,useState} from 'react';
-import { Eye,Search,UserRound } from 'lucide-react';
-import { Aluno,Matricula } from '../types';
-import { apiService,getStoredAlunos,getStoredMatriculas } from '../services/api';
-import { limpaCPF } from '../utils/cpfUtils';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Search, UserPlus } from 'lucide-react';
+import { Aluno, Matricula } from '../types';
+import { apiService, getStoredAlunos, getStoredMatriculas } from '../services/api';
+import { limpaCPF, validarCPF } from '../utils/cpfUtils';
+import { AutocompleteDropdown } from './AutocompleteDropdown';
 import { FichaAluno } from './FichaAluno';
 
-interface Props { onEditarAluno?:(a:Aluno)=>void; onAdicionarMatricula?:(a:Aluno)=>void; onExcluirAluno?:(a:Aluno)=>void|Promise<void>; onEditarMatricula?:(a:Aluno,m:Matricula)=>void; onExcluirMatricula?:(m:Matricula)=>void|Promise<void> }
-export const ConsultaAlunos:React.FC<Props>=({onEditarAluno,onAdicionarMatricula,onExcluirAluno,onEditarMatricula,onExcluirMatricula})=>{
- const [alunos,setAlunos]=useState<Aluno[]>([]),[matriculas,setMatriculas]=useState<Matricula[]>([]),[busca,setBusca]=useState(''),[selecionado,setSelecionado]=useState<Aluno|null>(null),[carregando,setCarregando]=useState(true);
- useEffect(()=>{apiService.sincronizarComPlanilha(true).finally(()=>{setAlunos(getStoredAlunos());setMatriculas(getStoredMatriculas());setCarregando(false)})},[]);
- const resultados=useMemo(()=>{const q=busca.trim().toLocaleLowerCase('pt-BR'),cpf=limpaCPF(busca);if(!q)return alunos.slice(0,30);return alunos.filter(a=>a.nomeCompleto.toLocaleLowerCase('pt-BR').includes(q)||(cpf&&limpaCPF(a.cpf).includes(cpf))).slice(0,50)},[alunos,busca]);
- return <section className="max-w-6xl mx-auto py-6"><div className="bg-white border rounded-3xl shadow-sm overflow-hidden"><div className="bg-sky-700 text-white p-6"><h2 className="text-2xl font-black">Consulta de alunos</h2><p className="text-sky-100 text-sm mt-1">Pesquise pelo nome ou CPF e abra a ficha completa.</p></div><div className="p-5"><label className="flex items-center gap-3 border-2 rounded-2xl px-4"><Search className="text-slate-400"/><input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Digite o nome ou CPF" className="w-full py-4 outline-none" autoFocus/></label><div className="mt-5 grid md:grid-cols-2 gap-3">{carregando?<div className="text-sm text-slate-500">Sincronizando alunos...</div>:resultados.map(a=><button key={a.idAluno} onClick={()=>setSelecionado(a)} className="text-left border rounded-2xl p-4 hover:border-sky-400 hover:bg-sky-50 flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden flex items-center justify-center">{a.fotoUrl?<img src={a.fotoUrl} alt="" className="w-full h-full object-cover"/>:<UserRound className="text-slate-300"/>}</div><div className="min-w-0 flex-1"><b className="block truncate">{a.nomeCompleto}</b><span className="text-xs text-slate-500">{a.cpf} • {matriculas.filter(m=>m.idAluno===a.idAluno).length} matrícula(s)</span></div><Eye className="w-5 h-5 text-sky-600"/></button>)}</div>{!carregando&&resultados.length===0&&<div className="text-center py-10 text-slate-500">Nenhum aluno encontrado.</div>}</div></div>{selecionado&&<FichaAluno aluno={selecionado} matriculas={matriculas.filter(m=>m.idAluno===selecionado.idAluno)} onFechar={()=>setSelecionado(null)} onEditar={()=>onEditarAluno?.(selecionado)} onMatricular={()=>onAdicionarMatricula?.(selecionado)} onExcluir={async()=>{await onExcluirAluno?.(selecionado);setSelecionado(null);setAlunos(getStoredAlunos());setMatriculas(getStoredMatriculas())}} onEditarMatricula={m=>onEditarMatricula?.(selecionado,m)} onExcluirMatricula={async m=>{await onExcluirMatricula?.(m);setMatriculas(getStoredMatriculas())}}/>}</section>;
+interface Props {
+  onEditarAluno?: (aluno: Aluno) => void;
+  onAdicionarMatricula?: (aluno: Aluno) => void;
+  onCadastrarNovo?: (cpf: string) => void;
+  onExcluirAluno?: (aluno: Aluno) => void | Promise<void>;
+  onEditarMatricula?: (aluno: Aluno, matricula: Matricula) => void;
+  onExcluirMatricula?: (matricula: Matricula) => void | Promise<void>;
+}
+
+export const ConsultaAlunos: React.FC<Props> = ({
+  onEditarAluno, onAdicionarMatricula, onCadastrarNovo, onExcluirAluno, onEditarMatricula, onExcluirMatricula,
+}) => {
+  const [alunos, setAlunos] = useState<Aluno[]>([]);
+  const [matriculas, setMatriculas] = useState<Matricula[]>([]);
+  const [busca, setBusca] = useState('');
+  const [selecionado, setSelecionado] = useState<Aluno | null>(null);
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    apiService.sincronizarComPlanilha().finally(() => {
+      setAlunos(getStoredAlunos()); setMatriculas(getStoredMatriculas()); setCarregando(false);
+    });
+  }, []);
+
+  const opcoes = useMemo(() => alunos.map((aluno) => ({
+    id: aluno.idAluno,
+    label: aluno.nomeCompleto,
+    secondary: `CPF: ${aluno.cpf}`,
+    imageUrl: aluno.fotoUrl,
+  })), [alunos]);
+  const cpfNovo = limpaCPF(busca);
+  const podeCadastrar = cpfNovo.length === 11 && validarCPF(busca) && !alunos.some((aluno) => limpaCPF(aluno.cpf) === cpfNovo);
+
+  return <section className="max-w-4xl mx-auto py-10">
+    <div className="bg-white border rounded-3xl shadow-sm overflow-visible">
+      <div className="bg-sky-700 text-white p-7 rounded-t-3xl">
+        <h2 className="text-2xl font-black">Consulta de alunos</h2>
+        <p className="text-sky-100 text-sm mt-1">Pesquise pelo nome ou CPF. Para alunos novos, preencha o CPF.</p>
+      </div>
+      <div className="p-6 md:p-10">
+        <div className="flex items-center gap-2 text-sky-800 font-bold mb-3"><Search className="w-5 h-5"/>Localizar aluno</div>
+        <AutocompleteDropdown
+          value={busca}
+          onChange={setBusca}
+          options={opcoes}
+          minChars={2}
+          maxResults={10}
+          showSearchIcon
+          placeholder="Digite pelo menos 2 letras do nome ou o CPF"
+          inputClassName="w-full h-16 pl-12 pr-12 rounded-2xl border-2 border-slate-300 text-lg font-semibold outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
+          onSelect={(option) => { const aluno = alunos.find((item) => item.idAluno === option.id); if (aluno) setSelecionado(aluno); }}
+        />
+        <p className="text-xs text-slate-500 mt-3">Os resultados aparecem somente enquanto você pesquisa.</p>
+        {carregando && <div className="mt-5 text-sm text-slate-500">Carregando dados do banco…</div>}
+        {!carregando && podeCadastrar && <div className="mt-6 bg-amber-50 border border-amber-200 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+          <div><b className="text-amber-950">CPF ainda não cadastrado</b><p className="text-sm text-amber-800 mt-1">Inicie o cadastro do novo aluno com este CPF.</p></div>
+          <button onClick={() => onCadastrarNovo?.(busca)} className="px-5 py-3 bg-indigo-700 text-white rounded-xl font-bold flex items-center gap-2"><UserPlus className="w-5 h-5"/>Cadastrar novo aluno</button>
+        </div>}
+      </div>
+    </div>
+    {selecionado && <FichaAluno
+      aluno={selecionado}
+      matriculas={matriculas.filter((matricula) => matricula.idAluno === selecionado.idAluno)}
+      onFechar={() => setSelecionado(null)}
+      onEditar={() => onEditarAluno?.(selecionado)}
+      onMatricular={() => onAdicionarMatricula?.(selecionado)}
+      onExcluir={async () => { await onExcluirAluno?.(selecionado); setSelecionado(null); setAlunos(getStoredAlunos()); setMatriculas(getStoredMatriculas()); }}
+      onEditarMatricula={(matricula) => onEditarMatricula?.(selecionado, matricula)}
+      onExcluirMatricula={async (matricula) => { await onExcluirMatricula?.(matricula); setMatriculas(getStoredMatriculas()); }}
+    />}
+  </section>;
 };

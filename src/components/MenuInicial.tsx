@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpenCheck, CalendarCheck2, ClipboardList, Search, Settings, UsersRound } from 'lucide-react';
+import { BookOpenCheck, CalendarCheck2, Search, Settings, UsersRound } from 'lucide-react';
 import { SessaoUsuario } from '../services/auth';
 
 export type TelaApp = 'inicio' | 'turmas' | 'consulta' | 'matriculas' | 'frequencia' | 'configuracoes';
@@ -8,7 +8,6 @@ export const MenuInicial: React.FC<{ sessao: SessaoUsuario; onAbrir: (tela: Tela
   const itens = [
     { tela: 'turmas', titulo: 'Turmas', descricao: 'Monte turmas e organize os alunos.', Icon: UsersRound, cor: 'bg-violet-600' },
     { tela: 'consulta', titulo: 'Consulta', descricao: 'Pesquise alunos e abra a ficha completa.', Icon: Search, cor: 'bg-sky-600' },
-    { tela: 'matriculas', titulo: 'Matrículas', descricao: 'Cadastre e acompanhe matrículas.', Icon: ClipboardList, cor: 'bg-emerald-600' },
     { tela: 'frequencia', titulo: 'Frequência', descricao: 'Registro de presença em desenvolvimento.', Icon: CalendarCheck2, cor: 'bg-amber-500' },
     ...(sessao.admin ? [{ tela: 'configuracoes', titulo: 'Configurações', descricao: 'Usuários, integrações e administração.', Icon: Settings, cor: 'bg-slate-700' }] : []),
   ] as const;

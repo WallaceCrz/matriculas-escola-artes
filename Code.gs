@@ -44,7 +44,10 @@ function doPost(e) {
     validarVersao(body.clientVersion);
 
     if (action === 'salvarAlunoEMatricula') return salvarAlunoEMatricula(body.aluno || {}, body.matricula || {});
-    if (action === 'salvarAluno') return salvarAluno(body.aluno || {});
+    if (action === 'salvarAluno') {
+      const salvo = salvarAluno(body.aluno || {});
+      return json({ sucesso: true, mensagem: 'Aluno salvo no backup.', idAluno: salvo.idAluno, fotoUrl: salvo.fotoUrl, versao: APP_VERSION });
+    }
     if (action === 'salvarLogin') return salvarLogin(body.nome, body.login, body.senha, body.perfil);
     if (action === 'excluirLogin') return excluirLogin(body.id || body.login);
     if (action === 'salvarTurma') return salvarTurma(body.turma || {});

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Matricula } from '../types';
+import React, { useEffect, useState } from 'react';
+import { Matricula, Turma } from '../types';
 import { GraduationCap, Navigation, Bus, AlertCircle, PenTool, CheckCircle2 } from 'lucide-react';
+import { listarTurmas } from '../services/turmas';
 
 interface EtapaDadosMatriculaProps {
   matricula: Matricula;
@@ -18,13 +19,15 @@ export const EtapaDadosMatricula: React.FC<EtapaDadosMatriculaProps> = ({
   salvando,
 }) => {
   const [erroForm, setErroForm] = useState('');
+  const [turmas, setTurmas] = useState<Turma[]>([]);
+  useEffect(() => { listarTurmas().then((result) => setTurmas(result.turmas)).catch(() => setTurmas([])); }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErroForm('');
 
-    if (!matricula.curso || !matricula.horario) {
-      setErroForm('Selecione o curso e o turno do aluno.');
+    if (!matricula.turma || !matricula.curso || !matricula.horario) {
+      setErroForm('Selecione a turma do aluno.');
       return;
     }
 
@@ -53,6 +56,20 @@ export const EtapaDadosMatricula: React.FC<EtapaDadosMatriculaProps> = ({
         {/* Curso e turno */}
         <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-5">
           <div>
+            <label className="flex items-center gap-2 text-sm font-bold text-slate-900 mb-2"><GraduationCap className="w-5 h-5 text-indigo-700"/>Turma <span className="text-rose-500">*</span></label>
+            <select
+              value={matricula.turma || ''}
+              onChange={(event) => {
+                const turma = turmas.find((item) => item.nome === event.target.value);
+                if (turma) setMatricula((previous) => ({ ...previous, turma: turma.nome, curso: turma.curso, horario: turma.horario, anoSemestre: turma.anoSemestre }));
+              }}
+              className="w-full px-4 py-3 rounded-xl border-2 border-slate-300 bg-white font-semibold outline-none focus:border-indigo-500"
+            >
+              <option value="">Selecione a turma do aluno</option>
+              {turmas.map((turma) => <option key={turma.idTurma} value={turma.nome}>{turma.nome} — {turma.anoSemestre}</option>)}
+            </select>
+          </div>
+          <div>
             <label className="flex items-center gap-2 text-sm font-bold text-slate-900 mb-3">
               <GraduationCap className="w-5 h-5 text-indigo-700" />
               <span>Curso <span className="text-rose-500">*</span></span>
@@ -60,7 +77,7 @@ export const EtapaDadosMatricula: React.FC<EtapaDadosMatriculaProps> = ({
             <div className="grid grid-cols-2 gap-3">
               {(['Teatro', 'Música'] as const).map((curso) => (
                 <label key={curso} className={`p-3 rounded-xl border-2 cursor-pointer font-bold text-center ${matricula.curso === curso ? 'border-indigo-600 bg-indigo-50 text-indigo-950' : 'border-slate-200 bg-white text-slate-700'}`}>
-                  <input type="radio" name="curso" className="mr-2" checked={matricula.curso === curso} onChange={() => setMatricula((p) => ({ ...p, curso, turma: `${curso} - ${p.horario || ''}`.replace(/ - $/, '') }))} />
+                  <input type="radio" name="curso" disabled className="mr-2" checked={matricula.curso === curso} readOnly />
                   {curso}
                 </label>
               ))}
@@ -75,7 +92,7 @@ export const EtapaDadosMatricula: React.FC<EtapaDadosMatriculaProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {(['Manhã', 'Tarde', 'Noite', 'Núcleo'] as const).map((horario) => (
                 <label key={horario} className={`p-3 rounded-xl border-2 cursor-pointer font-bold text-center ${matricula.horario === horario ? 'border-indigo-600 bg-indigo-50 text-indigo-950' : 'border-slate-200 bg-white text-slate-700'}`}>
-                  <input type="radio" name="horario" className="mr-2" checked={matricula.horario === horario} onChange={() => setMatricula((p) => ({ ...p, horario, turma: p.curso ? `${p.curso} - ${horario}` : horario }))} />
+                  <input type="radio" name="horario" disabled className="mr-2" checked={matricula.horario === horario} readOnly />
                   {horario}
                 </label>
               ))}

@@ -54,6 +54,7 @@ const ALUNO_INITIAL_STATE: Aluno = {
   fotoUrl: '',
   responsavel: '',
   responsavelCadastro: '',
+  situacao: 'ativo',
 };
 
 const MATRICULA_INITIAL_STATE: Matricula = {
@@ -119,7 +120,7 @@ export default function App() {
     uiFeedback.progress('Salvando matrícula', 'Enviando foto e dados para a planilha...', 25);
     try {
       const matParaSalvar = { ...(matriculaPassada || matricula), responsavelMatricula: sessao?.nome || 'Não informado' };
-      const alunoParaSalvar = { ...aluno, responsavelCadastro: aluno.responsavelCadastro || sessao?.nome || 'Não informado' };
+      const alunoParaSalvar = { ...aluno, situacao: 'ativo' as const, responsavelCadastro: aluno.responsavelCadastro || sessao?.nome || 'Não informado' };
       const res = await apiService.salvarAlunoEMatricula(alunoParaSalvar, matParaSalvar);
       uiFeedback.updateProgress('Finalizando matrícula', 'Atualizando os dados exibidos...', 90);
       if (res.sucesso) {

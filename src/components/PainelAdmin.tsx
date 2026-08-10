@@ -50,6 +50,7 @@ import { SessaoUsuario } from '../services/auth';
 import { GerenciarUsuarios } from './GerenciarUsuarios';
 import { uiFeedback } from '../services/uiFeedback';
 import { AutocompleteDropdown } from './AutocompleteDropdown';
+import { SituacaoAlunoBadge } from './SituacaoAlunoBadge';
 
 // Aluno de exemplo para testar e pré-visualizar o PDF
 const ALUNO_AMOSTRA: Aluno = {
@@ -81,6 +82,7 @@ const ALUNO_AMOSTRA: Aluno = {
   nomeMae: 'Ana Paula Silva Moura',
   telefoneMae: '(81) 99999-2222',
   fotoUrl: '',
+  situacao: 'ativo',
 };
 
 const MATRICULA_AMOSTRA: Matricula = {
@@ -1072,6 +1074,7 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
                               <span className="font-bold text-slate-900 block text-sm">
                                 {aluno.nomeCompleto || 'Sem nome informado'}
                               </span>
+                              <div className="mt-1"><SituacaoAlunoBadge situacao={aluno.situacao}/></div>
                               <span className="text-[10px] text-slate-500 font-mono">
                                 ID: {aluno.idAluno}
                               </span>

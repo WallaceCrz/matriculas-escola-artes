@@ -64,7 +64,10 @@ async function listData(db) {
     db.prepare('SELECT dados_json FROM matriculas ORDER BY updated_at DESC').all(),
   ]);
   return {
-    alunos: (alunos.results || []).map((row) => JSON.parse(row.dados_json)),
+    alunos: (alunos.results || []).map((row) => {
+      const aluno = JSON.parse(row.dados_json);
+      return { ...aluno, situacao: aluno.situacao || 'ativo' };
+    }),
     matriculas: (matriculas.results || []).map((row) => JSON.parse(row.dados_json)),
   };
 }
@@ -88,17 +91,19 @@ async function listTurmas(db) {
 
 async function saveAluno(env, aluno, queue = true) {
   const idAluno = id('ALU', aluno.idAluno);
-  const record = { ...aluno, idAluno };
-  await env.DB.prepare(`INSERT INTO alunos (id_aluno, cpf, nome_completo, telefone_aluno, dados_json)
-    VALUES (?, ?, ?, ?, ?) ON CONFLICT(id_aluno) DO UPDATE SET cpf=excluded.cpf, nome_completo=excluded.nome_completo,
-    telefone_aluno=excluded.telefone_aluno, dados_json=excluded.dados_json, updated_at=CURRENT_TIMESTAMP`)
-    .bind(idAluno, String(record.cpf || '').replace(/\D/g, ''), record.nomeCompleto, record.telefoneAluno || '', JSON.stringify(record)).run();
+  const situacoes = new Set(['ativo', 'inativo', 'cancelado', 'desistente', 'abandono']);
+  const situacao = String(aluno.situacao || 'ativo').toLowerCase();
+  const record = { ...aluno, idAluno, situacao: situacoes.has(situacao) ? situacao : 'ativo' };
+  await env.DB.prepare(`INSERT INTO alunos (id_aluno, cpf, nome_completo, telefone_aluno, situacao, dados_json)
+    VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id_aluno) DO UPDATE SET cpf=excluded.cpf, nome_completo=excluded.nome_completo,
+    telefone_aluno=excluded.telefone_aluno, situacao=excluded.situacao, dados_json=excluded.dados_json, updated_at=CURRENT_TIMESTAMP`)
+    .bind(idAluno, String(record.cpf || '').replace(/\D/g, ''), record.nomeCompleto, record.telefoneAluno || '', record.situacao, JSON.stringify(record)).run();
   if (queue) await enqueue(env.DB, 'aluno', idAluno, 'salvar', { action: 'salvarAluno', body: { aluno: record } });
   return record;
 }
 
 async function saveMatricula(env, aluno, matricula) {
-  const savedAluno = await saveAluno(env, aluno, false);
+  const savedAluno = await saveAluno(env, { ...aluno, situacao: 'ativo' }, false);
   const idMatricula = id('MAT', matricula.idMatricula);
   const record = { ...matricula, idMatricula, idAluno: savedAluno.idAluno };
   const duplicate = await env.DB.prepare(`SELECT id_matricula FROM matriculas

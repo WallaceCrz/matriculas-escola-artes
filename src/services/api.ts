@@ -77,6 +77,9 @@ function mapearAlunoBruto(raw: Record<string, unknown>, cpfFallback = ''): Aluno
     fotoUrl: normalizarUrlFoto(String(pick(raw, 'Foto do aluno', 'fotoUrl'))),
     responsavel: String(pick(raw, 'Responsavel', 'responsavel')),
     responsavelCadastro: String(pick(raw, 'Responsavel pelo cadastro', 'responsavelCadastro')),
+    situacao: (['ativo', 'inativo', 'cancelado', 'desistente', 'abandono'].includes(String(pick(raw, 'Situação', 'Situacao', 'situacao')).toLocaleLowerCase('pt-BR'))
+      ? String(pick(raw, 'Situação', 'Situacao', 'situacao')).toLocaleLowerCase('pt-BR')
+      : 'ativo') as Aluno['situacao'],
   };
 }
 

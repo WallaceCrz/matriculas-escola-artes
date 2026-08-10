@@ -210,6 +210,21 @@ export const EtapaDadosAluno: React.FC<EtapaDadosAlunoProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-3">
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Situação do aluno</label>
+              <select
+                value={aluno.situacao || 'ativo'}
+                onChange={(e) => handleChange('situacao', e.target.value as Aluno['situacao'])}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold bg-white focus:ring-2 focus:ring-amber-500 outline-none"
+              >
+                <option value="ativo">Ativo</option>
+                <option value="inativo">Inativo</option>
+                <option value="cancelado">Cancelado</option>
+                <option value="desistente">Desistente</option>
+                <option value="abandono">Abandono</option>
+              </select>
+              <p className="mt-1 text-xs text-slate-500">Ao realizar uma nova matrícula, a situação volta automaticamente para Ativo.</p>
+            </div>
+            <div className="md:col-span-3">
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Telefone do Aluno</label>
               <input type="tel" value={aluno.telefoneAluno || ''} onChange={(e) => handleChange('telefoneAluno', formatarTelefone(e.target.value))} placeholder="(81) 90000-0000" className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
             </div>

@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
+import { SituacaoAluno } from '../types';
+import { SituacaoAlunoBadge } from './SituacaoAlunoBadge';
 
 export interface AutocompleteOption {
   id: string;
   label: string;
   secondary?: string;
   imageUrl?: string;
+  situacao?: SituacaoAluno;
 }
 
 interface Props {
@@ -112,7 +115,7 @@ export const AutocompleteDropdown: React.FC<Props> = ({
                   {item.imageUrl ? <img src={item.imageUrl} alt="" className="w-full h-full object-cover"/> : item.label.slice(0,1)}
                 </div>
                 <div className="min-w-0"><div className="font-semibold text-sm text-slate-900 truncate">{item.label}</div>
-                {item.secondary && <div className="text-xs text-slate-500 mt-0.5 truncate">{item.secondary}</div>}</div>
+                {item.secondary && <div className="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-2"><span className="truncate">{item.secondary}</span>{item.situacao&&<SituacaoAlunoBadge situacao={item.situacao}/>}</div>}</div>
               </div>
             </button>
           ))}

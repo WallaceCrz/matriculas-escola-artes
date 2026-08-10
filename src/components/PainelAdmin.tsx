@@ -1019,7 +1019,7 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
               <AutocompleteDropdown
                 value={buscaAluno}
                 onChange={setBuscaAluno}
-                options={alunosSalvos.map((a) => ({ id: a.idAluno, label: a.nomeCompleto, secondary: `${a.cpf || 'CPF não informado'}${a.escolaEstuda ? ` • ${a.escolaEstuda}` : ''}` }))}
+                options={alunosSalvos.map((a) => ({ id: a.idAluno, label: a.nomeCompleto, secondary: `${a.cpf || 'CPF não informado'}${a.escolaEstuda ? ` • ${a.escolaEstuda}` : ''}`, situacao: a.situacao }))}
                 placeholder="Nome, CPF ou Escola..."
                 inputClassName="w-full py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
                 showSearchIcon
@@ -1074,7 +1074,6 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
                               <span className="font-bold text-slate-900 block text-sm">
                                 {aluno.nomeCompleto || 'Sem nome informado'}
                               </span>
-                              <div className="mt-1"><SituacaoAlunoBadge situacao={aluno.situacao}/></div>
                               <span className="text-[10px] text-slate-500 font-mono">
                                 ID: {aluno.idAluno}
                               </span>
@@ -1083,8 +1082,8 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
                         </td>
 
                         {/* CPF */}
-                        <td className="p-3 font-mono font-semibold text-slate-700">
-                          {aluno.cpf ? aluno.cpf : <span className="text-slate-400 font-sans italic">Não informado</span>}
+                        <td className="p-3 text-slate-700">
+                          <div className="flex flex-wrap items-center gap-2"><span className="font-mono font-semibold">{aluno.cpf ? aluno.cpf : <span className="text-slate-400 font-sans italic">Não informado</span>}</span><SituacaoAlunoBadge situacao={aluno.situacao}/></div>
                         </td>
 
                         {/* Escola */}
@@ -1183,7 +1182,7 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
                 </div>
                 <div>
                   <h3 className="font-bold text-base">Matrículas de {alunoModalMatriculas.nomeCompleto}</h3>
-                  <p className="text-xs text-indigo-200">CPF: {alunoModalMatriculas.cpf || 'Não informado'} | ID: {alunoModalMatriculas.idAluno}</p>
+                  <div className="text-xs text-indigo-200 flex flex-wrap items-center gap-2"><span>CPF: {alunoModalMatriculas.cpf || 'Não informado'} | ID: {alunoModalMatriculas.idAluno}</span><SituacaoAlunoBadge situacao={alunoModalMatriculas.situacao}/></div>
                 </div>
               </div>
               <button

@@ -4,6 +4,7 @@ import { apiService } from '../services/api';
 import { Aluno } from '../types';
 import { Search, UserPlus, UserCheck, AlertCircle, Sparkles } from 'lucide-react';
 import { AutocompleteDropdown } from './AutocompleteDropdown';
+import { SituacaoAlunoBadge } from './SituacaoAlunoBadge';
 
 interface EtapaBuscaCPFProps {
   cpf: string;
@@ -100,7 +101,7 @@ export const EtapaBuscaCPF: React.FC<EtapaBuscaCPFProps> = ({
             <AutocompleteDropdown
               value={cpf}
               onChange={(valor) => handleCpfChange({ target: { value: valor } } as React.ChangeEvent<HTMLInputElement>)}
-              options={sugestoes.map((a) => ({ id: a.idAluno, label: a.nomeCompleto, secondary: `CPF: ${a.cpf}`, imageUrl: a.fotoUrl }))}
+              options={sugestoes.map((a) => ({ id: a.idAluno, label: a.nomeCompleto, secondary: `CPF: ${a.cpf}`, imageUrl: a.fotoUrl, situacao: a.situacao }))}
               onSelect={(opcao) => {
                 const aluno = sugestoes.find((a) => a.idAluno === opcao.id);
                 if (aluno) {
@@ -150,9 +151,9 @@ export const EtapaBuscaCPF: React.FC<EtapaBuscaCPFProps> = ({
                 <div>
                   <h3 className="font-bold text-base text-emerald-950">Aluno Encontrado!</h3>
                   <p className="text-sm font-semibold">{resultado.aluno.nomeCompleto}</p>
-                  <p className="text-xs text-emerald-800">
-                    Nascimento: {resultado.aluno.dataNascimento} • CPF: {resultado.aluno.cpf}
-                  </p>
+                  <div className="text-xs text-emerald-800 flex flex-wrap items-center gap-2">
+                    <span>Nascimento: {resultado.aluno.dataNascimento} • CPF: {resultado.aluno.cpf}</span><SituacaoAlunoBadge situacao={resultado.aluno.situacao}/>
+                  </div>
                 </div>
               </div>
               <p className="text-xs text-emerald-800">

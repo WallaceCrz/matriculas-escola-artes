@@ -6,7 +6,7 @@ const estilos: Record<SituacaoAluno, string> = {
   inativo: 'bg-slate-100 text-slate-700 border-slate-300',
   cancelado: 'bg-rose-100 text-rose-800 border-rose-200',
   desistente: 'bg-amber-100 text-amber-900 border-amber-200',
-  abandono: 'bg-slate-200 text-slate-800 border-slate-300',
+  abandono: 'bg-violet-100 text-violet-800 border-violet-200',
 };
 
 const rotulos: Record<SituacaoAluno, string> = {

@@ -17,6 +17,7 @@ import { gerarPDFMatricula } from '../services/pdfGenerator';
 import { getStoredAlunos, getStoredMatriculas, saveStoredAlunos, saveStoredMatriculas, apiService } from '../services/api';
 import { Aluno, Matricula } from '../types';
 import { uiFeedback } from '../services/uiFeedback';
+import { SituacaoAlunoBadge } from './SituacaoAlunoBadge';
 
 export const ListaAlunos: React.FC = () => {
   const [alunosSalvos, setAlunosSalvos] = useState<Aluno[]>([]);
@@ -313,7 +314,7 @@ export const ListaAlunos: React.FC = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="p-3 font-mono font-semibold">{aluno.cpf || '—'}</td>
+                      <td className="p-3"><div className="flex flex-wrap items-center gap-2"><span className="font-mono font-semibold">{aluno.cpf || '—'}</span><SituacaoAlunoBadge situacao={aluno.situacao}/></div></td>
                       <td className="p-3 max-w-[180px]">
                         <span className="font-medium block truncate">{aluno.escolaEstuda || '—'}</span>
                         <span className="text-[10px] text-slate-500">{aluno.serie || ''}</span>

@@ -6,6 +6,7 @@ import { listarTurmas } from '../services/turmas';
 import { limpaCPF, validarCPF } from '../utils/cpfUtils';
 import { AutocompleteDropdown } from './AutocompleteDropdown';
 import { FichaAluno } from './FichaAluno';
+import { SituacaoAlunoBadge } from './SituacaoAlunoBadge';
 
 interface Props {
   onEditarAluno?: (aluno: Aluno) => void;
@@ -40,7 +41,7 @@ export const ConsultaAlunos: React.FC<Props> = ({
   }, []);
 
   const idsMatriculados = useMemo(() => new Set(matriculas.map((matricula) => matricula.idAluno)), [matriculas]);
-  const opcoes = useMemo(() => alunos.map((aluno) => ({ id: aluno.idAluno, label: aluno.nomeCompleto, secondary: `CPF: ${aluno.cpf}`, imageUrl: aluno.fotoUrl })), [alunos]);
+  const opcoes = useMemo(() => alunos.map((aluno) => ({ id: aluno.idAluno, label: aluno.nomeCompleto, secondary: `CPF: ${aluno.cpf}`, imageUrl: aluno.fotoUrl, situacao: aluno.situacao })), [alunos]);
   const cpfNovo = limpaCPF(busca);
   const podeCadastrar = cpfNovo.length === 11 && validarCPF(busca) && !alunos.some((aluno) => limpaCPF(aluno.cpf) === cpfNovo);
   const turmaSelecionada = turmas.find((turma) => turma.idTurma === turmaId);
@@ -79,11 +80,11 @@ export const ConsultaAlunos: React.FC<Props> = ({
           <select value={turmaId} onChange={e=>setTurmaId(e.target.value)} className="bg-white border rounded-xl px-3 py-3 text-sm"><option value="">Todas as turmas</option>{turmas.map(turma=><option key={turma.idTurma} value={turma.idTurma}>{turma.nome}</option>)}</select>
         </div>
         <div className="flex flex-wrap justify-between gap-2 text-sm"><b>{filtrados.length} aluno(s)</b><span className="text-slate-500">{idsMatriculados.size} matriculados • {alunos.length-idsMatriculados.size} sem matrícula</span></div>
-        <div className="grid md:grid-cols-2 gap-3">{filtrados.slice(0,limite).map(aluno=><button key={aluno.idAluno} onClick={()=>setSelecionado(aluno)} className="text-left border rounded-2xl p-4 flex items-center gap-3 hover:border-sky-400 hover:bg-sky-50 transition-colors"><FotoAluno aluno={aluno}/><div className="min-w-0 flex-1"><b className="block truncate">{aluno.nomeCompleto}</b><div className="text-xs text-slate-500 mt-1">{aluno.cpf} • {idsMatriculados.has(aluno.idAluno)?'Matriculado':'Sem matrícula'}</div></div></button>)}</div>
+        <div className="grid md:grid-cols-2 gap-3">{filtrados.slice(0,limite).map(aluno=><button key={aluno.idAluno} onClick={()=>setSelecionado(aluno)} className="text-left border rounded-2xl p-4 flex items-center gap-3 hover:border-sky-400 hover:bg-sky-50 transition-colors"><FotoAluno aluno={aluno}/><div className="min-w-0 flex-1"><b className="block truncate">{aluno.nomeCompleto}</b><div className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-2"><span>{aluno.cpf}</span><SituacaoAlunoBadge situacao={aluno.situacao}/><span>• {idsMatriculados.has(aluno.idAluno)?'Matriculado':'Sem matrícula'}</span></div></div></button>)}</div>
         {!carregando&&!filtrados.length&&<div className="border border-dashed rounded-2xl p-8 text-center text-slate-500">Nenhum aluno encontrado com estes filtros.</div>}
         {filtrados.length>limite&&<div className="text-center"><button onClick={()=>setLimite(valor=>valor+50)} className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-sm">Mostrar mais</button></div>}
       </div>}
     </div>
-    {selecionado&&<FichaAluno aluno={selecionado} matriculas={matriculas.filter(matricula=>matricula.idAluno===selecionado.idAluno)} onFechar={()=>setSelecionado(null)} onEditar={()=>onEditarAluno?.(selecionado)} onMatricular={()=>onAdicionarMatricula?.(selecionado)} onExcluir={async()=>{await onExcluirAluno?.(selecionado);setSelecionado(null);setAlunos(getStoredAlunos());setMatriculas(getStoredMatriculas());}} onEditarMatricula={matricula=>onEditarMatricula?.(selecionado,matricula)} onExcluirMatricula={async matricula=>{await onExcluirMatricula?.(matricula);setMatriculas(getStoredMatriculas());}}/>}
+    {selecionado&&<FichaAluno aluno={selecionado} matriculas={matriculas.filter(matricula=>matricula.idAluno===selecionado.idAluno)} onFechar={()=>setSelecionado(null)} onAlunoAtualizado={atualizado=>{setSelecionado(atualizado);setAlunos(lista=>lista.map(item=>item.idAluno===atualizado.idAluno?atualizado:item))}} onEditar={()=>onEditarAluno?.(selecionado)} onMatricular={()=>onAdicionarMatricula?.(selecionado)} onExcluir={async()=>{await onExcluirAluno?.(selecionado);setSelecionado(null);setAlunos(getStoredAlunos());setMatriculas(getStoredMatriculas());}} onEditarMatricula={matricula=>onEditarMatricula?.(selecionado,matricula)} onExcluirMatricula={async matricula=>{await onExcluirMatricula?.(matricula);setMatriculas(getStoredMatriculas());}}/>}
   </section>;
 };

@@ -45,6 +45,21 @@ export interface Matricula {
   responsavelMatricula?: string;
 }
 
+export type PerfilUsuario = 'administrador' | 'professor' | 'operador';
+
+export interface Turma {
+  idTurma: string;
+  nome: string;
+  curso: 'Teatro' | 'Música';
+  horario: 'Manhã' | 'Tarde' | 'Noite' | 'Núcleo';
+  nivel?: 'Sementes' | 'Aperfeiçoamento' | '';
+  anoSemestre: string;
+  alunosIds: string[];
+  criadaPor: string;
+  preCriada?: boolean;
+  ativa: boolean;
+}
+
 export type EtapaFormulario = 1 | 2 | 3 | 4 | 5;
 
 export interface ApiResponse<T> {

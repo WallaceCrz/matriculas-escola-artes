@@ -1,5 +1,6 @@
 import { CONFIG } from '../config';
 import { APP_SCRIPT_VERSION } from './api';
+import { PerfilUsuario } from '../types';
 
 export interface UsuarioSistema {
   id: string;
@@ -8,12 +9,14 @@ export interface UsuarioSistema {
   nome: string;
   criadoEm?: string;
   admin?: boolean;
+  perfil?: PerfilUsuario;
 }
 
 export interface SessaoUsuario {
   login: string;
   nome: string;
   admin: boolean;
+  perfil: PerfilUsuario;
   expiresAt: number;
 }
 
@@ -70,19 +73,19 @@ export async function listarUsuarios(): Promise<UsuarioSistema[]> {
   if (!resposta?.sucesso) throw new Error(resposta?.mensagem || 'Erro ao listar usuários.');
   const comuns = (resposta.usuarios || []) as UsuarioSistema[];
   return [
-    { id: 'USR-ADMIN', nome: 'Administrador', login: 'admin', admin: true },
-    ...comuns.map((u) => ({ ...u, admin: false })),
+    { id: 'USR-ADMIN', nome: 'Administrador', login: 'admin', admin: true, perfil: 'administrador' },
+    ...comuns.map((u) => ({ ...u, admin: false, perfil: u.perfil || 'operador' })),
   ];
 }
 
-export async function cadastrarUsuario(nome: string, login: string, senha: string): Promise<{ sucesso: boolean; mensagem: string }> {
+export async function cadastrarUsuario(nome: string, login: string, senha: string, perfil: PerfilUsuario = 'operador'): Promise<{ sucesso: boolean; mensagem: string }> {
   const nomeLimpo = nome.trim();
   const loginLimpo = login.trim().toLowerCase();
   const senhaLimpa = senha.trim();
   if (!nomeLimpo || !loginLimpo || !senhaLimpa) return { sucesso: false, mensagem: 'Preencha nome, login e senha.' };
   if (loginLimpo === 'admin') return { sucesso: false, mensagem: 'O login admin é reservado.' };
   try {
-    const resposta = await chamarPost({ action: 'salvarLogin', nome: nomeLimpo, login: loginLimpo, senha: senhaLimpa });
+    const resposta = await chamarPost({ action: 'salvarLogin', nome: nomeLimpo, login: loginLimpo, senha: senhaLimpa, perfil });
     return { sucesso: !!resposta?.sucesso, mensagem: resposta?.mensagem || (resposta?.sucesso ? 'Usuário cadastrado.' : 'Erro ao cadastrar usuário.') };
   } catch (err) {
     return { sucesso: false, mensagem: err instanceof Error ? err.message : 'Erro ao cadastrar usuário.' };
@@ -100,7 +103,7 @@ export async function autenticar(login: string, senha: string): Promise<SessaoUs
   const expiresAt = Date.now() + SESSION_DURATION_MS;
 
   if (loginLimpo === CONFIG.ADMIN_LOGIN && senha === CONFIG.ADMIN_PASSWORD) {
-    return salvarSessao({ login: 'admin', nome: 'Administrador', admin: true, expiresAt });
+    return salvarSessao({ login: 'admin', nome: 'Administrador', admin: true, perfil: 'administrador', expiresAt });
   }
 
   try {
@@ -113,6 +116,7 @@ export async function autenticar(login: string, senha: string): Promise<SessaoUs
       login: String(resposta.usuario.login || loginLimpo),
       nome: String(resposta.usuario.nome || loginLimpo),
       admin: false,
+      perfil: resposta.usuario.perfil === 'professor' ? 'professor' : 'operador',
       expiresAt,
     });
   } catch {

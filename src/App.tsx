@@ -8,12 +8,17 @@ import { EtapaDadosMatricula } from './components/EtapaDadosMatricula';
 import { EtapaSucessoPDF } from './components/EtapaSucessoPDF';
 import { PainelAdmin } from './components/PainelAdmin';
 import { ModalAppsScript } from './components/ModalAppsScript';
-import { apiService } from './services/api';
+import { apiService, getStoredMatriculas } from './services/api';
 import { CONFIG } from './config';
 import { Login } from './components/Login';
 import { obterSessao, sair, SessaoUsuario } from './services/auth';
 import { GlobalFeedback } from './components/GlobalFeedback';
 import { uiFeedback } from './services/uiFeedback';
+import { MenuInicial, TelaApp } from './components/MenuInicial';
+import { TurmasPage } from './components/TurmasPage';
+import { ConsultaAlunos } from './components/ConsultaAlunos';
+import { FrequenciaEmProgresso } from './components/FrequenciaEmProgresso';
+import { FichaAluno } from './components/FichaAluno';
 
 const ALUNO_INITIAL_STATE: Aluno = {
   idAluno: '',
@@ -62,7 +67,7 @@ const MATRICULA_INITIAL_STATE: Matricula = {
 };
 
 export default function App() {
-  const [modoVisualizacao, setModoVisualizacao] = useState<'matricula' | 'alunos' | 'admin'>('matricula');
+  const [modoVisualizacao, setModoVisualizacao] = useState<TelaApp>('inicio');
   const [sessao, setSessao] = useState<SessaoUsuario | null>(obterSessao());
   const [etapaAtual, setEtapaAtual] = useState<EtapaFormulario>(1);
   const [cpf, setCpf] = useState<string>('');
@@ -76,6 +81,7 @@ export default function App() {
   const [modalConfigAberto, setModalConfigAberto] = useState<boolean>(false);
   const [appsScriptConectado, setAppsScriptConectado] = useState<boolean>(false);
   const [editandoAluno, setEditandoAluno] = useState(false);
+  const [alunoEmFicha, setAlunoEmFicha] = useState<Aluno | null>(null);
 
   useEffect(() => {
     apiService.verificarVersaoAppsScript()
@@ -117,12 +123,12 @@ export default function App() {
   };
 
   const handleEditarAluno = (alunoEditar: Aluno) => {
-    setAluno(alunoEditar); setCpf(alunoEditar.cpf); setEditandoAluno(true); setModoVisualizacao('matricula'); setEtapaAtual(3);
+    setAluno(alunoEditar); setCpf(alunoEditar.cpf); setEditandoAluno(true); setModoVisualizacao('matriculas'); setEtapaAtual(3);
   };
 
   const handleAdicionarMatricula = (alunoMatricular: Aluno) => {
     setAluno(alunoMatricular); setCpf(alunoMatricular.cpf); setMatricula({ ...MATRICULA_INITIAL_STATE, idAluno: alunoMatricular.idAluno, responsavelMatricula: sessao?.nome || 'Não informado' });
-    setEditandoAluno(false); setModoVisualizacao('matricula'); setEtapaAtual(4);
+    setEditandoAluno(false); setModoVisualizacao('matriculas'); setEtapaAtual(4);
   };
 
   const handleSalvarEdicaoAluno = async () => {
@@ -134,7 +140,7 @@ export default function App() {
       if (alunoAtualizado) setAluno(alunoAtualizado);
       uiFeedback.notify(res.mensagem, 'success');
       setEditandoAluno(false);
-      setModoVisualizacao('alunos');
+      setModoVisualizacao('consulta');
     } catch (err) { uiFeedback.notify(err instanceof Error ? err.message : 'Erro ao salvar aluno.', 'error'); } finally { setSalvando(false); uiFeedback.hideProgress(); }
   };
 
@@ -156,16 +162,18 @@ export default function App() {
         onAbrirModalConfig={() => setModalConfigAberto(true)}
         appsScriptConectado={appsScriptConectado}
         modoVisualizacao={modoVisualizacao}
-        setModoVisualizacao={(modo) => { if (modo !== 'admin' || sessao.admin) setModoVisualizacao(modo); }}
+        setModoVisualizacao={(modo) => { if (modo !== 'configuracoes' || sessao.admin) setModoVisualizacao(modo); }}
         sessao={sessao}
-        onSair={() => { sair(); setSessao(null); setModoVisualizacao('matricula'); }}
+        onSair={() => { sair(); setSessao(null); setModoVisualizacao('inicio'); }}
       />
 
       <main className="flex-1 px-4 py-6">
-        {modoVisualizacao === 'admin' ? (
-          sessao.admin ? <PainelAdmin modo="admin" /> : <div className="max-w-xl mx-auto bg-rose-50 border border-rose-200 rounded-xl p-6 text-rose-800 font-bold">Acesso restrito ao administrador.</div>
-        ) : modoVisualizacao === 'alunos' ? (
-          <PainelAdmin modo="alunos" sessao={sessao} onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} />
+        {modoVisualizacao === 'inicio' ? <MenuInicial sessao={sessao} onAbrir={setModoVisualizacao}/>
+        : modoVisualizacao === 'turmas' ? <TurmasPage sessao={sessao}/>
+        : modoVisualizacao === 'consulta' ? <ConsultaAlunos/>
+        : modoVisualizacao === 'frequencia' ? <FrequenciaEmProgresso/>
+        : modoVisualizacao === 'configuracoes' ? (
+          sessao.admin ? <PainelAdmin modo="admin" onExibirAluno={setAlunoEmFicha}/> : <div className="max-w-xl mx-auto bg-rose-50 border border-rose-200 rounded-xl p-6 text-rose-800 font-bold">Acesso restrito ao administrador.</div>
         ) : (
           <>
             {etapaAtual === 1 && (
@@ -232,6 +240,7 @@ export default function App() {
         onClose={() => setModalConfigAberto(false)}
         onStatusChange={(conectado) => setAppsScriptConectado(conectado)}
       />
+      {alunoEmFicha && <FichaAluno aluno={alunoEmFicha} matriculas={getStoredMatriculas().filter(m=>m.idAluno===alunoEmFicha.idAluno)} onFechar={()=>setAlunoEmFicha(null)}/>}
     </div>
   );
 }

@@ -3,6 +3,7 @@ const ABA_ALUNOS = 'ALUNOS';
 const ABA_MATRICULAS = 'MATRICULAS';
 const ABA_EXCLUIDOS = 'EXCLUIDOS';
 const ABA_LOGINS = 'LOGINS';
+const ABA_TURMAS = 'TURMAS';
 const PASTA_FOTOS = 'Fotos_Alunos_EscolaDeArtes';
 
 function doGet(e) {
@@ -14,6 +15,7 @@ function doGet(e) {
     if (action === 'buscarAluno') return buscarAluno(p.termo || p.cpf || '');
     if (action === 'listarTodos') return listarTodos();
     if (action === 'listarLogins') return listarLogins();
+    if (action === 'listarTurmas') return listarTurmas();
     if (action === 'obterFoto') return obterFoto(p.id || p.url || '');
     if (action === 'estadoDados') return json({ sucesso: true, revisao: obterRevisao(), versao: APP_VERSION });
     if (action === 'exportarBackup') { validarVersao(p.clientVersion); return exportarBackup(); }
@@ -43,8 +45,10 @@ function doPost(e) {
 
     if (action === 'salvarAlunoEMatricula') return salvarAlunoEMatricula(body.aluno || {}, body.matricula || {});
     if (action === 'salvarAluno') return salvarAluno(body.aluno || {});
-    if (action === 'salvarLogin') return salvarLogin(body.nome, body.login, body.senha);
+    if (action === 'salvarLogin') return salvarLogin(body.nome, body.login, body.senha, body.perfil);
     if (action === 'excluirLogin') return excluirLogin(body.id || body.login);
+    if (action === 'salvarTurma') return salvarTurma(body.turma || {});
+    if (action === 'excluirTurma') return excluirTurma(body.idTurma);
     if (action === 'removerDuplicados') return removerDuplicados(body.usuario || 'Administrador');
     return json({ sucesso: false, mensagem: 'Ação POST desconhecida.', versao: APP_VERSION });
   } catch (err) {
@@ -63,7 +67,8 @@ function garantirEstrutura() {
   garantirAba(ss, ABA_ALUNOS, ['ID_ALUNO','CPF','Nome Completo','Data de Nascimento','Idade','Naturalidade','RG','Órgão Emissor','Cor / Etnia','Gênero','Escola em que estuda','Série','PCD','Descrição PCD','Alergia','Descrição Alergia','Uso de Medicação','Descrição Medicação','Endereço / Rua','Número','Cidade','CEP','Bairro','Nome do Pai','Telefone do Pai','Nome da Mãe','Telefone da Mãe','Foto do aluno','Responsavel','Responsavel pelo cadastro']);
   garantirAba(ss, ABA_MATRICULAS, ['ID_MATRICULA','ID_ALUNO','Data da Matrícula','Curso','Turma','Horário','Pode Sair Sozinho','Utilizará Transporte','Ano/Semestre','Responsavel pela matricula']);
   garantirAba(ss, ABA_EXCLUIDOS, ['ID_LOG','Data/Hora','Usuário responsável','Tipo do registro','ID_ALUNO','ID_MATRICULA','Dados completos (JSON)']);
-  garantirAba(ss, ABA_LOGINS, ['NOME','LOGIN','SENHA']);
+  garantirAba(ss, ABA_LOGINS, ['NOME','LOGIN','SENHA','PERFIL']);
+  garantirAba(ss, ABA_TURMAS, ['ID_TURMA','NOME','CURSO','HORARIO','NIVEL','ANO_SEMESTRE','ALUNOS_IDS','CRIADA_POR','PRE_CRIADA','ATIVA']);
 }
 
 function garantirAba(ss, nome, headers) {
@@ -383,26 +388,26 @@ function excluirAluno(id, usuario) {
 
 function indicesLogin(sh) {
   const h = headers(sh);
-  return { nome: h.findIndex(function(v) { return normalizarCabecalho(v) === 'NOME'; }), login: h.findIndex(function(v) { return normalizarCabecalho(v) === 'LOGIN'; }), senha: h.findIndex(function(v) { return normalizarCabecalho(v) === 'SENHA'; }) };
+  return { nome: h.findIndex(function(v) { return normalizarCabecalho(v) === 'NOME'; }), login: h.findIndex(function(v) { return normalizarCabecalho(v) === 'LOGIN'; }), senha: h.findIndex(function(v) { return normalizarCabecalho(v) === 'SENHA'; }), perfil: h.findIndex(function(v) { return normalizarCabecalho(v) === 'PERFIL'; }) };
 }
 function listarLogins() {
   const sh = SpreadsheetApp.getActive().getSheetByName(ABA_LOGINS), idx = indicesLogin(sh), d = sh.getDataRange().getDisplayValues(), usuarios = [];
-  for (let r = 1; r < d.length; r++) { const login = String(d[r][idx.login] || '').trim().toLowerCase(); if (login) usuarios.push({ id: login, nome: String(d[r][idx.nome] || login), login: login }); }
+  for (let r = 1; r < d.length; r++) { const login = String(d[r][idx.login] || '').trim().toLowerCase(); if (login) usuarios.push({ id: login, nome: String(d[r][idx.nome] || login), login: login, perfil: String(d[r][idx.perfil] || 'operador').trim().toLowerCase() }); }
   return json({ sucesso: true, usuarios: usuarios, versao: APP_VERSION });
 }
 function autenticarLogin(login, senha) {
   const lb = String(login || '').trim().toLowerCase(), sb = String(senha || '');
   const sh = SpreadsheetApp.getActive().getSheetByName(ABA_LOGINS), idx = indicesLogin(sh), d = sh.getDataRange().getDisplayValues();
-  for (let r = 1; r < d.length; r++) if (String(d[r][idx.login] || '').trim().toLowerCase() === lb && String(d[r][idx.senha] || '') === sb) return json({ sucesso: true, usuario: { nome: String(d[r][idx.nome] || lb), login: lb }, versao: APP_VERSION });
+  for (let r = 1; r < d.length; r++) if (String(d[r][idx.login] || '').trim().toLowerCase() === lb && String(d[r][idx.senha] || '') === sb) return json({ sucesso: true, usuario: { nome: String(d[r][idx.nome] || lb), login: lb, perfil: String(d[r][idx.perfil] || 'operador').trim().toLowerCase() }, versao: APP_VERSION });
   return json({ sucesso: false, mensagem: 'Login ou senha inválidos.', versao: APP_VERSION });
 }
-function salvarLogin(nome, login, senha) {
+function salvarLogin(nome, login, senha, perfil) {
   const n = String(nome || '').trim(), l = String(login || '').trim().toLowerCase(), s = String(senha || '').trim();
   if (!n || !l || !s) return json({ sucesso: false, mensagem: 'Preencha nome, login e senha.', versao: APP_VERSION });
   if (l === 'admin') return json({ sucesso: false, mensagem: 'O login admin é reservado.', versao: APP_VERSION });
   const sh = SpreadsheetApp.getActive().getSheetByName(ABA_LOGINS), idx = indicesLogin(sh), d = sh.getDataRange().getDisplayValues();
   for (let r = 1; r < d.length; r++) if (String(d[r][idx.login] || '').trim().toLowerCase() === l) return json({ sucesso: false, mensagem: 'Este login já existe.', versao: APP_VERSION });
-  const row = new Array(sh.getLastColumn()).fill(''); row[idx.nome] = n; row[idx.login] = l; row[idx.senha] = s; sh.appendRow(row); marcarAlteracao();
+  const row = new Array(sh.getLastColumn()).fill(''); row[idx.nome] = n; row[idx.login] = l; row[idx.senha] = s; row[idx.perfil] = String(perfil || 'operador').toLowerCase() === 'professor' ? 'professor' : 'operador'; sh.appendRow(row); marcarAlteracao();
   return json({ sucesso: true, mensagem: 'Usuário salvo.', versao: APP_VERSION });
 }
 function excluirLogin(id) {
@@ -410,6 +415,21 @@ function excluirLogin(id) {
   const sh = SpreadsheetApp.getActive().getSheetByName(ABA_LOGINS), idx = indicesLogin(sh), d = sh.getDataRange().getDisplayValues();
   for (let r = d.length - 1; r >= 1; r--) if (String(d[r][idx.login] || '').trim().toLowerCase() === l) { sh.deleteRow(r + 1); marcarAlteracao(); return json({ sucesso: true, mensagem: 'Usuário excluído.', versao: APP_VERSION }); }
   return json({ sucesso: false, mensagem: 'Usuário não encontrado.', versao: APP_VERSION });
+}
+
+function turmaObj(t) {
+  return { ID_TURMA:t.idTurma, NOME:t.nome, CURSO:t.curso, HORARIO:t.horario, NIVEL:t.nivel || '', ANO_SEMESTRE:t.anoSemestre, ALUNOS_IDS:JSON.stringify(t.alunosIds || []), CRIADA_POR:t.criadaPor || '', PRE_CRIADA:t.preCriada ? 'SIM' : 'NÃO', ATIVA:t.ativa === false ? 'NÃO' : 'SIM' };
+}
+function listarTurmas() {
+  const sh = SpreadsheetApp.getActive().getSheetByName(ABA_TURMAS), d = sh.getDataRange().getDisplayValues(), h = d[0], turmas = [];
+  for (let r=1;r<d.length;r++) { const o=objLinha(h,d[r]); if (!o.ID_TURMA || String(o.ATIVA).toUpperCase()==='NÃO') continue; let ids=[]; try { ids=JSON.parse(o.ALUNOS_IDS || '[]'); } catch(err) {} turmas.push({idTurma:String(o.ID_TURMA),nome:String(o.NOME),curso:String(o.CURSO),horario:String(o.HORARIO),nivel:String(o.NIVEL||''),anoSemestre:String(o.ANO_SEMESTRE),alunosIds:ids,criadaPor:String(o.CRIADA_POR||''),preCriada:String(o.PRE_CRIADA).toUpperCase()==='SIM',ativa:true}); }
+  return json({sucesso:true,turmas:turmas,versao:APP_VERSION});
+}
+function salvarTurma(t) {
+  const sh=SpreadsheetApp.getActive().getSheetByName(ABA_TURMAS); t.idTurma=String(t.idTurma||('TURMA-'+Date.now())); const linha=localizar(sh,'ID_TURMA',t.idTurma); escreverPorHeaders(sh,turmaObj(t),linha); marcarAlteracao(); return json({sucesso:true,idTurma:t.idTurma,mensagem:'Turma salva.',versao:APP_VERSION});
+}
+function excluirTurma(idTurma) {
+  const sh=SpreadsheetApp.getActive().getSheetByName(ABA_TURMAS),linha=localizar(sh,'ID_TURMA',idTurma); if(linha<0)return json({sucesso:false,mensagem:'Turma não encontrada.',versao:APP_VERSION}); sh.deleteRow(linha); marcarAlteracao(); return json({sucesso:true,mensagem:'Turma excluída.',versao:APP_VERSION});
 }
 
 

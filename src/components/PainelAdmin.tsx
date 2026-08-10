@@ -94,8 +94,8 @@ const MATRICULA_AMOSTRA: Matricula = {
   anoSemestre: '2026.2',
 };
 
-interface PainelAdminProps { modo?: 'admin' | 'alunos'; sessao?: SessaoUsuario; onEditarAluno?: (aluno: Aluno) => void; onAdicionarMatricula?: (aluno: Aluno) => void; }
-export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao, onEditarAluno, onAdicionarMatricula }) => {
+interface PainelAdminProps { modo?: 'admin' | 'alunos'; sessao?: SessaoUsuario; onEditarAluno?: (aluno: Aluno) => void; onAdicionarMatricula?: (aluno: Aluno) => void; onExibirAluno?: (aluno: Aluno) => void; }
+export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao, onEditarAluno, onAdicionarMatricula, onExibirAluno }) => {
   const [abaAtiva, setAbaAtiva] = useState<'pdf' | 'usuarios'>(modo === 'admin' ? 'pdf' : 'pdf');
   const [config, setConfig] = useState<PDFLayoutConfig>(getPDFLayoutConfig());
   const [salvoFeedback, setSalvoFeedback] = useState(false);
@@ -1144,6 +1144,7 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
                             </button>
 
                             <button type="button" onClick={() => onEditarAluno?.(aluno)} className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold rounded-lg border border-sky-200 flex items-center gap-1 text-xs" title="Editar dados do aluno"><Pencil className="w-3.5 h-3.5"/><span>Editar</span></button>
+                            <button type="button" onClick={() => onExibirAluno?.(aluno)} className="px-2.5 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-800 font-bold rounded-lg border border-violet-200 flex items-center gap-1 text-xs" title="Exibir ficha completa"><Eye className="w-3.5 h-3.5"/><span>Exibir</span></button>
                             <button type="button" onClick={() => onAdicionarMatricula?.(aluno)} className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-lg border border-emerald-200 flex items-center gap-1 text-xs" title="Adicionar nova matrícula"><UserPlus className="w-3.5 h-3.5"/><span>Matricular</span></button>
 
                             {/* Deletar Aluno */}

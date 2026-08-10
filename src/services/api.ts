@@ -237,7 +237,9 @@ export const apiService = {
       return `"${texto.replace(/"/g, '""')}"`;
     };
     const secao = (titulo: string, registros: Record<string, unknown>[]) => {
-      const colunas = [...new Set(registros.flatMap((registro) => Object.keys(registro)))];
+      const conjuntoColunas = new Set<string>();
+      registros.forEach((registro) => Object.keys(registro).forEach((coluna) => conjuntoColunas.add(coluna)));
+      const colunas = Array.from(conjuntoColunas);
       return [escapar(titulo), colunas.map(escapar).join(';'), ...registros.map((registro) => colunas.map((coluna) => escapar(registro[coluna])).join(';'))].join('\r\n');
     };
     const conteudo = [

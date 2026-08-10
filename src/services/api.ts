@@ -99,6 +99,7 @@ function mapearAlunoBruto(a: any, cpfFallback = ''): Aluno {
     idAluno: String(a.ID_ALUNO || a.idAluno || ''),
     cpf: String(a.CPF || a.cpf || cpfFallback),
     nomeCompleto: String(a['Nome Completo'] || a.nomeCompleto || ''),
+    telefoneAluno: String(a['Telefone do Aluno'] || a.telefoneAluno || ''),
     dataNascimento: nascimento,
     idade: Number(a.Idade || a.idade || (nascimento ? calcularIdade(nascimento) : 0)),
     naturalidade: String(a.Naturalidade || a.naturalidade || ''),

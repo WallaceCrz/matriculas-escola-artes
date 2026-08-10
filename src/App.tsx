@@ -19,10 +19,12 @@ import { TurmasPage } from './components/TurmasPage';
 import { ConsultaAlunos } from './components/ConsultaAlunos';
 import { FrequenciaEmProgresso } from './components/FrequenciaEmProgresso';
 import { FichaAluno } from './components/FichaAluno';
+import { MenuLateral } from './components/MenuLateral';
 
 const ALUNO_INITIAL_STATE: Aluno = {
   idAluno: '',
   nomeCompleto: '',
+  telefoneAluno: '',
   dataNascimento: '',
   idade: 0,
   naturalidade: '',
@@ -131,6 +133,32 @@ export default function App() {
     setEditandoAluno(false); setModoVisualizacao('matriculas'); setEtapaAtual(4);
   };
 
+  const handleEditarMatricula = (alunoMatricula: Aluno, matriculaEditar: Matricula) => {
+    setAluno(alunoMatricula); setCpf(alunoMatricula.cpf); setMatricula(matriculaEditar);
+    setEditandoAluno(false); setModoVisualizacao('matriculas'); setEtapaAtual(4);
+  };
+
+  const handleExcluirMatricula = async (matriculaExcluir: Matricula) => {
+    if (!confirm(`Excluir a matrícula ${matriculaExcluir.idMatricula}?`)) return;
+    const resultado = await apiService.excluirMatriculaRemoto(matriculaExcluir.idMatricula, sessao?.nome || 'Não informado');
+    if (!resultado.sucesso) {
+      uiFeedback.notify(resultado.mensagem || 'Não foi possível excluir a matrícula.', 'error');
+      return;
+    }
+    uiFeedback.notify('Matrícula excluída com sucesso.', 'success');
+  };
+
+  const handleExcluirAluno = async (alunoExcluir: Aluno) => {
+    if (!confirm(`Excluir permanentemente ${alunoExcluir.nomeCompleto} e todas as matrículas?`)) return;
+    const resultado = await apiService.excluirAlunoRemoto(alunoExcluir.idAluno, sessao?.nome || 'Não informado');
+    if (!resultado.sucesso) {
+      uiFeedback.notify(resultado.mensagem || 'Não foi possível excluir o aluno.', 'error');
+      return;
+    }
+    setAlunoEmFicha(null);
+    uiFeedback.notify('Aluno excluído com sucesso.', 'success');
+  };
+
   const handleSalvarEdicaoAluno = async () => {
     setSalvando(true);
     uiFeedback.progress('Salvando aluno', 'Atualizando os dados na planilha...', 45);
@@ -167,10 +195,12 @@ export default function App() {
         onSair={() => { sair(); setSessao(null); setModoVisualizacao('inicio'); }}
       />
 
-      <main className="flex-1 px-4 py-6">
+      <div className="flex flex-1 min-h-0">
+      <MenuLateral sessao={sessao} atual={modoVisualizacao} onAbrir={setModoVisualizacao}/>
+      <main className="flex-1 min-w-0 px-4 py-6">
         {modoVisualizacao === 'inicio' ? <MenuInicial sessao={sessao} onAbrir={setModoVisualizacao}/>
-        : modoVisualizacao === 'turmas' ? <TurmasPage sessao={sessao}/>
-        : modoVisualizacao === 'consulta' ? <ConsultaAlunos/>
+        : modoVisualizacao === 'turmas' ? <TurmasPage sessao={sessao} onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula}/>
+        : modoVisualizacao === 'consulta' ? <ConsultaAlunos onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula}/>
         : modoVisualizacao === 'frequencia' ? <FrequenciaEmProgresso/>
         : modoVisualizacao === 'configuracoes' ? (
           sessao.admin ? <PainelAdmin modo="admin" onExibirAluno={setAlunoEmFicha}/> : <div className="max-w-xl mx-auto bg-rose-50 border border-rose-200 rounded-xl p-6 text-rose-800 font-bold">Acesso restrito ao administrador.</div>
@@ -226,6 +256,7 @@ export default function App() {
           </>
         )}
       </main>
+      </div>
 
       <footer className="bg-indigo-950 text-indigo-300 text-xs py-4 text-center border-t border-indigo-900">
         <p className="max-w-4xl mx-auto px-4">
@@ -240,7 +271,7 @@ export default function App() {
         onClose={() => setModalConfigAberto(false)}
         onStatusChange={(conectado) => setAppsScriptConectado(conectado)}
       />
-      {alunoEmFicha && <FichaAluno aluno={alunoEmFicha} matriculas={getStoredMatriculas().filter(m=>m.idAluno===alunoEmFicha.idAluno)} onFechar={()=>setAlunoEmFicha(null)}/>}
+      {alunoEmFicha && <FichaAluno aluno={alunoEmFicha} matriculas={getStoredMatriculas().filter(m=>m.idAluno===alunoEmFicha.idAluno)} onFechar={()=>setAlunoEmFicha(null)} onEditar={()=>handleEditarAluno(alunoEmFicha)} onMatricular={()=>handleAdicionarMatricula(alunoEmFicha)} onExcluir={()=>handleExcluirAluno(alunoEmFicha)} onEditarMatricula={m=>handleEditarMatricula(alunoEmFicha,m)} onExcluirMatricula={handleExcluirMatricula}/>}
     </div>
   );
 }

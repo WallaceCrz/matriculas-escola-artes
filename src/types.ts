@@ -1,6 +1,7 @@
 export interface Aluno {
   idAluno: string;
   nomeCompleto: string;
+  telefoneAluno?: string;
   dataNascimento: string;
   idade: number;
   naturalidade: string;

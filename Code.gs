@@ -64,7 +64,7 @@ function validarVersao(clientVersion) {
 
 function garantirEstrutura() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  garantirAba(ss, ABA_ALUNOS, ['ID_ALUNO','CPF','Nome Completo','Data de Nascimento','Idade','Naturalidade','RG','Órgão Emissor','Cor / Etnia','Gênero','Escola em que estuda','Série','PCD','Descrição PCD','Alergia','Descrição Alergia','Uso de Medicação','Descrição Medicação','Endereço / Rua','Número','Cidade','CEP','Bairro','Nome do Pai','Telefone do Pai','Nome da Mãe','Telefone da Mãe','Foto do aluno','Responsavel','Responsavel pelo cadastro']);
+  garantirAba(ss, ABA_ALUNOS, ['ID_ALUNO','CPF','Nome Completo','Telefone do Aluno','Data de Nascimento','Idade','Naturalidade','RG','Órgão Emissor','Cor / Etnia','Gênero','Escola em que estuda','Série','PCD','Descrição PCD','Alergia','Descrição Alergia','Uso de Medicação','Descrição Medicação','Endereço / Rua','Número','Cidade','CEP','Bairro','Nome do Pai','Telefone do Pai','Nome da Mãe','Telefone da Mãe','Foto do aluno','Responsavel','Responsavel pelo cadastro']);
   garantirAba(ss, ABA_MATRICULAS, ['ID_MATRICULA','ID_ALUNO','Data da Matrícula','Curso','Turma','Horário','Pode Sair Sozinho','Utilizará Transporte','Ano/Semestre','Responsavel pela matricula']);
   garantirAba(ss, ABA_EXCLUIDOS, ['ID_LOG','Data/Hora','Usuário responsável','Tipo do registro','ID_ALUNO','ID_MATRICULA','Dados completos (JSON)']);
   garantirAba(ss, ABA_LOGINS, ['NOME','LOGIN','SENHA','PERFIL']);
@@ -191,6 +191,9 @@ function salvarAluno(a) {
     const fotoNova = salvarFotoNoDrive(a.fotoUrl, a.idAluno);
     if (fotoAnterior && fotoNova && fotoAnterior !== fotoNova && String(a.fotoUrl || '').startsWith('data:image/')) excluirFotoDrive(fotoAnterior);
     escreverPorHeaders(sh, alunoObj(a, fotoNova), linha);
+    const linhaSalva = localizar(sh, 'ID_ALUNO', a.idAluno);
+    const telefoneAlunoCol = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0].findIndex(function(v) { return normalizarCabecalho(v) === normalizarCabecalho('Telefone do Aluno'); });
+    if (linhaSalva > 0 && telefoneAlunoCol >= 0) sh.getRange(linhaSalva, telefoneAlunoCol + 1).setValue(a.telefoneAluno || '');
     marcarAlteracao();
     return { idAluno: a.idAluno, fotoUrl: fotoNova };
   } finally {

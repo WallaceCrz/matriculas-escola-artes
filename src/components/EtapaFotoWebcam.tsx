@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Camera, RefreshCw, Upload, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Camera, RefreshCw, Upload, CheckCircle2, AlertCircle, Crop, ZoomIn, X } from 'lucide-react';
 import { apiService } from '../services/api';
 
 interface EtapaFotoWebcamProps {
@@ -17,11 +17,51 @@ export const EtapaFotoWebcam: React.FC<EtapaFotoWebcamProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const recorteCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [streamAtivo, setStreamAtivo] = useState(false);
   const [erroCamera, setErroCamera] = useState('');
   const [fotoPreview, setFotoPreview] = useState(fotoUrl);
   const [carregandoFoto, setCarregandoFoto] = useState(false);
   const [erroFoto, setErroFoto] = useState('');
+  const [recorteFonte, setRecorteFonte] = useState('');
+  const [zoomRecorte, setZoomRecorte] = useState(1);
+  const [posicaoX, setPosicaoX] = useState(0);
+  const [posicaoY, setPosicaoY] = useState(0);
+
+  const abrirRecorte = (fonte: string) => {
+    setRecorteFonte(fonte);
+    setZoomRecorte(1);
+    setPosicaoX(0);
+    setPosicaoY(0);
+  };
+
+  useEffect(() => {
+    if (!recorteFonte || !recorteCanvasRef.current) return;
+    const imagem = new Image();
+    imagem.onload = () => {
+      const canvas = recorteCanvasRef.current;
+      const ctx = canvas?.getContext('2d');
+      if (!canvas || !ctx) return;
+      canvas.width = 300; canvas.height = 400;
+      const escalaBase = Math.max(300 / imagem.naturalWidth, 400 / imagem.naturalHeight);
+      const escala = escalaBase * zoomRecorte;
+      const largura = imagem.naturalWidth * escala;
+      const altura = imagem.naturalHeight * escala;
+      const sobraX = Math.max(0, (largura - 300) / 2);
+      const sobraY = Math.max(0, (altura - 400) / 2);
+      const x = (300 - largura) / 2 - (posicaoX / 100) * sobraX;
+      const y = (400 - altura) / 2 - (posicaoY / 100) * sobraY;
+      ctx.fillStyle = '#f1f5f9'; ctx.fillRect(0, 0, 300, 400);
+      ctx.drawImage(imagem, x, y, largura, altura);
+    };
+    imagem.src = recorteFonte;
+  }, [recorteFonte, zoomRecorte, posicaoX, posicaoY]);
+
+  const confirmarRecorte = () => {
+    const dataUrl = recorteCanvasRef.current?.toDataURL('image/jpeg', 0.75);
+    if (!dataUrl) return;
+    setFotoPreview(dataUrl); setFotoUrl(dataUrl); setRecorteFonte('');
+  };
 
   const iniciarCamera = async () => {
     setErroCamera('');
@@ -162,9 +202,8 @@ export const EtapaFotoWebcam: React.FC<EtapaFotoWebcamProps> = ({
     ctx.drawImage(video, sourceX, sourceY, sourceW, sourceH, 0, 0, 300, 400);
     ctx.restore();
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.70);
-    setFotoPreview(dataUrl);
-    setFotoUrl(dataUrl);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+    abrirRecorte(dataUrl);
     pararCamera();
   };
 
@@ -176,23 +215,7 @@ export const EtapaFotoWebcam: React.FC<EtapaFotoWebcamProps> = ({
     reader.onload = (event) => {
       if (event.target?.result) {
         const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = 300;
-          canvas.height = 400;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, 300, 400);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
-            setFotoPreview(dataUrl);
-            setFotoUrl(dataUrl);
-          } else {
-            const dataUrl = event.target?.result as string;
-            setFotoPreview(dataUrl);
-            setFotoUrl(dataUrl);
-          }
-          pararCamera();
-        };
+        img.onload = () => { abrirRecorte(event.target?.result as string); pararCamera(); };
         img.src = event.target.result as string;
       }
     };
@@ -247,6 +270,7 @@ export const EtapaFotoWebcam: React.FC<EtapaFotoWebcamProps> = ({
               </p>
             )}
             <div className="flex gap-2 justify-center pt-2">
+              <button type="button" onClick={()=>abrirRecorte(fotoPreview)} disabled={!fotoPreview} className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all disabled:opacity-50"><Crop className="w-3.5 h-3.5"/>Ajustar Recorte</button>
               <button
                 type="button"
                 onClick={() => {
@@ -341,6 +365,8 @@ export const EtapaFotoWebcam: React.FC<EtapaFotoWebcamProps> = ({
           </div>
         )}
       </div>
+
+      {recorteFonte&&<div className="fixed inset-0 z-[80] bg-slate-950/75 p-4 flex items-center justify-center"><div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden"><div className="p-5 border-b flex items-start justify-between"><div><h3 className="font-black text-xl flex items-center gap-2"><Crop className="w-5 h-5 text-indigo-600"/>Recortar foto 3x4</h3><p className="text-sm text-slate-500 mt-1">Ajuste o enquadramento. A imagem será salva sem esticar.</p></div><button type="button" onClick={()=>setRecorteFonte('')} className="p-2 rounded-xl hover:bg-slate-100"><X className="w-5 h-5"/></button></div><div className="p-5 md:p-6 space-y-5"><div className="w-[225px] h-[300px] mx-auto rounded-2xl overflow-hidden border-4 border-indigo-100 shadow bg-slate-100"><canvas ref={recorteCanvasRef} className="w-full h-full"/></div><label className="block"><span className="flex items-center gap-2 text-xs font-bold text-slate-600 mb-2"><ZoomIn className="w-4 h-4"/>Aproximar</span><input type="range" min="1" max="3" step="0.01" value={zoomRecorte} onChange={e=>setZoomRecorte(Number(e.target.value))} className="w-full accent-indigo-600"/></label><div className="grid sm:grid-cols-2 gap-4"><label className="text-xs font-bold text-slate-600">Mover para os lados<input type="range" min="-100" max="100" value={posicaoX} onChange={e=>setPosicaoX(Number(e.target.value))} className="w-full mt-2 accent-indigo-600"/></label><label className="text-xs font-bold text-slate-600">Mover para cima/baixo<input type="range" min="-100" max="100" value={posicaoY} onChange={e=>setPosicaoY(Number(e.target.value))} className="w-full mt-2 accent-indigo-600"/></label></div></div><div className="p-5 border-t bg-slate-50 flex justify-end gap-3"><button type="button" onClick={()=>setRecorteFonte('')} className="px-4 py-2.5 rounded-xl bg-white border font-bold text-sm">Cancelar</button><button type="button" onClick={confirmarRecorte} className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/>Usar este recorte</button></div></div></div>}
 
       {/* Botões de Navegação */}
       <div className="mt-8 pt-6 border-t border-slate-200 flex justify-between gap-4">

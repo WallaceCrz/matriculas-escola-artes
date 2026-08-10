@@ -230,7 +230,16 @@ export const apiService = {
 
   async exportarBackup(): Promise<{ nomeArquivo: string; blob: Blob }> {
     const dados = await api<{ alunos: Aluno[]; matriculas: Matricula[] }>('data');
-    const turmas = await api<Record<string, unknown>[]>('turmas');
+    const respostaTurmas = await api<{ turmas: Record<string, unknown>[] }>('turmas');
+    const exigirLista = (valor: unknown, nome: string): Record<string, unknown>[] => {
+      if (!Array.isArray(valor)) throw new Error(`Não foi possível gerar o backup: ${nome} não retornou uma lista válida.`);
+      const registros: Record<string, unknown>[] = [];
+      for (const item of valor) if (item && typeof item === 'object' && !Array.isArray(item)) registros.push(item as Record<string, unknown>);
+      return registros;
+    };
+    const alunosBackup = exigirLista(dados.alunos, 'alunos');
+    const matriculasBackup = exigirLista(dados.matriculas, 'matrículas');
+    const turmasBackup = exigirLista(respostaTurmas.turmas, 'turmas');
     const escapar = (valor: unknown) => {
       let texto = Array.isArray(valor) || (valor && typeof valor === 'object') ? JSON.stringify(valor) : String(valor ?? '');
       if (/^[=+\-@]/.test(texto)) texto = `'${texto}`;
@@ -238,14 +247,16 @@ export const apiService = {
     };
     const secao = (titulo: string, registros: Record<string, unknown>[]) => {
       const conjuntoColunas = new Set<string>();
-      registros.forEach((registro) => Object.keys(registro).forEach((coluna) => conjuntoColunas.add(coluna)));
+      for (const registro of registros) for (const coluna of Object.keys(registro)) conjuntoColunas.add(coluna);
       const colunas = Array.from(conjuntoColunas);
-      return [escapar(titulo), colunas.map(escapar).join(';'), ...registros.map((registro) => colunas.map((coluna) => escapar(registro[coluna])).join(';'))].join('\r\n');
+      const linhas = [escapar(titulo), colunas.map(escapar).join(';')];
+      for (const registro of registros) linhas.push(colunas.map((coluna) => escapar(registro[coluna])).join(';'));
+      return linhas.join('\r\n');
     };
     const conteudo = [
-      secao('ALUNOS', dados.alunos as unknown as Record<string, unknown>[]),
-      secao('MATRÍCULAS', dados.matriculas as unknown as Record<string, unknown>[]),
-      secao('TURMAS', turmas),
+      secao('ALUNOS', alunosBackup),
+      secao('MATRÍCULAS', matriculasBackup),
+      secao('TURMAS', turmasBackup),
     ].join('\r\n\r\n');
     const agora = new Date();
     const carimbo = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}_${String(agora.getHours()).padStart(2, '0')}-${String(agora.getMinutes()).padStart(2, '0')}`;

@@ -20,6 +20,7 @@ import { ConsultaAlunos } from './components/ConsultaAlunos';
 import { FrequenciaEmProgresso } from './components/FrequenciaEmProgresso';
 import { FichaAluno } from './components/FichaAluno';
 import { MenuLateral } from './components/MenuLateral';
+import { ArrowLeft } from 'lucide-react';
 
 const ALUNO_INITIAL_STATE: Aluno = {
   idAluno: '',
@@ -192,6 +193,14 @@ export default function App() {
     setEtapaAtual(1);
   };
 
+  const handleVoltarGlobal = () => {
+    if (modoVisualizacao === 'matriculas' && etapaAtual > 1 && etapaAtual < 5) {
+      setEtapaAtual((etapaAtual - 1) as EtapaFormulario);
+      return;
+    }
+    setModoVisualizacao('inicio');
+  };
+
   if (!sessao) return <Login onLogin={setSessao} />;
 
   return (
@@ -209,6 +218,7 @@ export default function App() {
       <div className="flex flex-1 min-h-0">
       <MenuLateral sessao={sessao} atual={modoVisualizacao} onAbrir={setModoVisualizacao}/>
       <main className="flex-1 min-w-0 px-4 py-6">
+        {modoVisualizacao !== 'inicio' && <div className="max-w-7xl mx-auto mb-4"><button type="button" onClick={handleVoltarGlobal} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50"><ArrowLeft className="w-4 h-4"/>Voltar</button></div>}
         {modoVisualizacao === 'inicio' ? <MenuInicial sessao={sessao} onAbrir={setModoVisualizacao}/>
         : modoVisualizacao === 'turmas' ? <TurmasPage sessao={sessao} onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula}/>
         : modoVisualizacao === 'consulta' ? <ConsultaAlunos onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onCadastrarNovo={handleCadastrarNovoConsulta} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula}/>

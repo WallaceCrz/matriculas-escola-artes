@@ -502,7 +502,7 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
   });
 
   const handleExportarBackup = async () => {
-    uiFeedback.progress('Gerando backup', 'Preparando uma cópia completa da planilha...', 35);
+    uiFeedback.progress('Gerando backup', 'Preparando alunos, matrículas e turmas do banco...', 35);
     try {
       const { nomeArquivo, blob } = await apiService.exportarBackup();
       uiFeedback.updateProgress('Baixando backup', 'Arquivo pronto para salvar.', 95);

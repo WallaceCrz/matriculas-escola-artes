@@ -229,11 +229,28 @@ export const apiService = {
   },
 
   async exportarBackup(): Promise<{ nomeArquivo: string; blob: Blob }> {
-    const response = await fetch(`${CONFIG.DEFAULT_APPS_SCRIPT_URL}?${new URLSearchParams({ action: 'exportarBackup', clientVersion: APP_SCRIPT_VERSION })}`);
-    const result = await response.json();
-    if (!result.sucesso) throw new Error(result.mensagem || 'Não foi possível exportar o backup.');
-    const bytes = Uint8Array.from(atob(result.base64), (char) => char.charCodeAt(0));
-    return { nomeArquivo: result.nomeArquivo, blob: new Blob([bytes], { type: result.mimeType }) };
+    const dados = await api<{ alunos: Aluno[]; matriculas: Matricula[] }>('data');
+    const turmas = await api<Record<string, unknown>[]>('turmas');
+    const escapar = (valor: unknown) => {
+      let texto = Array.isArray(valor) || (valor && typeof valor === 'object') ? JSON.stringify(valor) : String(valor ?? '');
+      if (/^[=+\-@]/.test(texto)) texto = `'${texto}`;
+      return `"${texto.replace(/"/g, '""')}"`;
+    };
+    const secao = (titulo: string, registros: Record<string, unknown>[]) => {
+      const colunas = [...new Set(registros.flatMap((registro) => Object.keys(registro)))];
+      return [escapar(titulo), colunas.map(escapar).join(';'), ...registros.map((registro) => colunas.map((coluna) => escapar(registro[coluna])).join(';'))].join('\r\n');
+    };
+    const conteudo = [
+      secao('ALUNOS', dados.alunos as unknown as Record<string, unknown>[]),
+      secao('MATRÍCULAS', dados.matriculas as unknown as Record<string, unknown>[]),
+      secao('TURMAS', turmas),
+    ].join('\r\n\r\n');
+    const agora = new Date();
+    const carimbo = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}_${String(agora.getHours()).padStart(2, '0')}-${String(agora.getMinutes()).padStart(2, '0')}`;
+    return {
+      nomeArquivo: `backup_matriculas_${carimbo}.csv`,
+      blob: new Blob([`\uFEFF${conteudo}`], { type: 'text/csv;charset=utf-8' }),
+    };
   },
 
   iniciarBackupAutomatico() {

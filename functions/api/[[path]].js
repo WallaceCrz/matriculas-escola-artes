@@ -145,6 +145,10 @@ export async function onRequest(context) {
     }
     if (request.method === 'GET' && path === 'data') return json({ sucesso: true, ...(await listData(env.DB)) });
     if (request.method === 'GET' && path === 'turmas') return json({ sucesso: true, turmas: await listTurmas(env.DB) });
+    if (request.method === 'GET' && path === 'usuarios/perfis') {
+      const result = await env.DB.prepare('SELECT login, perfil FROM usuario_perfis').all();
+      return json({ sucesso: true, perfis: result.results || [] });
+    }
     if (request.method === 'GET' && path === 'revision') {
       const result = await env.DB.prepare(`SELECT MAX(updated_at) revisao FROM (
         SELECT updated_at FROM alunos UNION ALL SELECT updated_at FROM matriculas UNION ALL SELECT updated_at FROM turmas
@@ -164,6 +168,17 @@ export async function onRequest(context) {
       if (result.duplicate) return json({ sucesso: false, mensagem: `Este aluno já possui a matrícula ${result.duplicate}.` }, 409);
       context.waitUntil(flushOutbox(env));
       return json({ sucesso: true, idAluno: result.aluno.idAluno, idMatricula: result.matricula.idMatricula, mensagem: 'Matrícula salva no banco.' });
+    }
+    if (request.method === 'PUT' && parts[0] === 'usuarios' && parts[1] === 'perfis' && parts[2]) {
+      const payload = await body(request);
+      const login = decodeURIComponent(parts[2]).trim().toLowerCase();
+      const perfil = payload.perfil === 'professor' ? 'professor' : payload.perfil === 'operador' ? 'operador' : '';
+      if (!login || !perfil) return json({ sucesso: false, mensagem: 'Usuário ou tipo inválido.' }, 400);
+      await env.DB.prepare(`INSERT INTO usuario_perfis (login, perfil) VALUES (?, ?)
+        ON CONFLICT(login) DO UPDATE SET perfil=excluded.perfil, updated_at=CURRENT_TIMESTAMP`).bind(login, perfil).run();
+      await enqueue(env.DB, 'usuario', login, 'alterar_perfil', { action: 'atualizarPerfilLogin', body: { id: login, perfil } });
+      context.waitUntil(flushOutbox(env));
+      return json({ sucesso: true, login, perfil, mensagem: 'Tipo de usuário atualizado.' });
     }
     if (request.method === 'DELETE' && parts[0] === 'alunos' && parts[1]) {
       const payload = await body(request);

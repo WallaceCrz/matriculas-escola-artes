@@ -68,13 +68,22 @@ function salvarSessao(sessao: SessaoUsuario): SessaoUsuario {
   return sessao;
 }
 
+async function obterPerfisD1(): Promise<Record<string, PerfilUsuario>> {
+  try {
+    const resposta = await fetch('/api/usuarios/perfis');
+    if (!resposta.ok) return {};
+    const dados = await resposta.json();
+    return Object.fromEntries((dados.perfis || []).map((item: { login: string; perfil: PerfilUsuario }) => [item.login, item.perfil]));
+  } catch { return {}; }
+}
+
 export async function listarUsuarios(): Promise<UsuarioSistema[]> {
-  const resposta = await chamarGet({ action: 'listarLogins' });
+  const [resposta, perfisD1] = await Promise.all([chamarGet({ action: 'listarLogins' }), obterPerfisD1()]);
   if (!resposta?.sucesso) throw new Error(resposta?.mensagem || 'Erro ao listar usuários.');
   const comuns = (resposta.usuarios || []) as UsuarioSistema[];
   return [
     { id: 'USR-ADMIN', nome: 'Administrador', login: 'admin', admin: true, perfil: 'administrador' },
-    ...comuns.map((u) => ({ ...u, admin: false, perfil: u.perfil || 'operador' })),
+    ...comuns.map((u) => ({ ...u, admin: false, perfil: perfisD1[u.login] || u.perfil || 'operador' })),
   ];
 }
 
@@ -98,6 +107,15 @@ export async function excluirUsuario(id: string): Promise<void> {
   if (!resposta?.sucesso) throw new Error(resposta?.mensagem || 'Erro ao excluir usuário.');
 }
 
+export async function atualizarPerfilUsuario(id: string, perfil: PerfilUsuario): Promise<void> {
+  if (!id || id === 'USR-ADMIN' || perfil === 'administrador') return;
+  const respostaHttp = await fetch(`/api/usuarios/perfis/${encodeURIComponent(id)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perfil }),
+  });
+  const resposta = await respostaHttp.json();
+  if (!resposta?.sucesso) throw new Error(resposta?.mensagem || 'Erro ao alterar o tipo de usuário.');
+}
+
 export async function autenticar(login: string, senha: string): Promise<SessaoUsuario | null> {
   const loginLimpo = login.trim().toLowerCase();
   const expiresAt = Date.now() + SESSION_DURATION_MS;
@@ -112,11 +130,12 @@ export async function autenticar(login: string, senha: string): Promise<SessaoUs
     // A senha continua sendo validada exclusivamente pelo Apps Script.
     const resposta = await chamarPost({ action: 'autenticarLogin', login: loginLimpo, senha });
     if (!resposta?.sucesso || !resposta?.usuario) return null;
+    const perfisD1 = await obterPerfisD1();
     return salvarSessao({
       login: String(resposta.usuario.login || loginLimpo),
       nome: String(resposta.usuario.nome || loginLimpo),
       admin: false,
-      perfil: resposta.usuario.perfil === 'professor' ? 'professor' : 'operador',
+      perfil: perfisD1[loginLimpo] || (resposta.usuario.perfil === 'professor' ? 'professor' : 'operador'),
       expiresAt,
     });
   } catch {

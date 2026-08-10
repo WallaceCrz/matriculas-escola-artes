@@ -49,6 +49,7 @@ function doPost(e) {
       return json({ sucesso: true, mensagem: 'Aluno salvo no backup.', idAluno: salvo.idAluno, fotoUrl: salvo.fotoUrl, versao: APP_VERSION });
     }
     if (action === 'salvarLogin') return salvarLogin(body.nome, body.login, body.senha, body.perfil);
+    if (action === 'atualizarPerfilLogin') return atualizarPerfilLogin(body.id, body.perfil);
     if (action === 'excluirLogin') return excluirLogin(body.id || body.login);
     if (action === 'salvarTurma') return salvarTurma(body.turma || {});
     if (action === 'excluirTurma') return excluirTurma(body.idTurma);
@@ -420,6 +421,13 @@ function excluirLogin(id) {
   const l = String(id || '').trim().toLowerCase();
   const sh = SpreadsheetApp.getActive().getSheetByName(ABA_LOGINS), idx = indicesLogin(sh), d = sh.getDataRange().getDisplayValues();
   for (let r = d.length - 1; r >= 1; r--) if (String(d[r][idx.login] || '').trim().toLowerCase() === l) { sh.deleteRow(r + 1); marcarAlteracao(); return json({ sucesso: true, mensagem: 'Usuário excluído.', versao: APP_VERSION }); }
+  return json({ sucesso: false, mensagem: 'Usuário não encontrado.', versao: APP_VERSION });
+}
+function atualizarPerfilLogin(id, perfil) {
+  const l = String(id || '').trim().toLowerCase(), p = String(perfil || '').trim().toLowerCase();
+  if (p !== 'operador' && p !== 'professor') return json({ sucesso: false, mensagem: 'Tipo de usuário inválido.', versao: APP_VERSION });
+  const sh = SpreadsheetApp.getActive().getSheetByName(ABA_LOGINS), idx = indicesLogin(sh), d = sh.getDataRange().getDisplayValues();
+  for (let r = 1; r < d.length; r++) if (String(d[r][idx.login] || '').trim().toLowerCase() === l) { sh.getRange(r + 1, idx.perfil + 1).setValue(p); marcarAlteracao(); return json({ sucesso: true, mensagem: 'Tipo de usuário atualizado.', versao: APP_VERSION }); }
   return json({ sucesso: false, mensagem: 'Usuário não encontrado.', versao: APP_VERSION });
 }
 

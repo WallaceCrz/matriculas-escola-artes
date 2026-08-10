@@ -3,15 +3,18 @@ import { CONFIG } from '../config';
 import { limpaCPF, calcularIdade, dataParaBR } from '../utils/cpfUtils';
 
 export const APP_SCRIPT_VERSION = 'EA_APP_2026_07_29_05';
-
-
+const API_BASE = '/api';
+const CACHE_TTL_MS = 120_000;
 const fotoDataUrlCache = new Map<string, string>();
+let cacheAlunos: Aluno[] = [];
+let cacheMatriculas: Matricula[] = [];
+let ultimaSincronizacao = 0;
+let carregamento: Promise<{ sucesso: boolean; mensagem: string; totalAlunos?: number }> | null = null;
 
 export function extrairIdFotoDrive(valor: string): string {
-  const texto = String(valor || '');
-  const match = texto.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/)
-    || texto.match(/[?&]id=([a-zA-Z0-9_-]+)/)
-    || texto.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  const match = String(valor || '').match(/googleusercontent\.com\/d\/([\w-]+)/)
+    || String(valor || '').match(/[?&]id=([\w-]+)/)
+    || String(valor || '').match(/drive\.google\.com\/file\/d\/([\w-]+)/);
   return match ? match[1] : '';
 }
 
@@ -21,379 +24,252 @@ export function normalizarUrlFoto(valor: string): string {
   return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1000` : texto;
 }
 
-let cacheAlunos: Aluno[] = [];
-let cacheMatriculas: Matricula[] = [];
-let ultimaSincronizacao = 0;
-let sincronizacaoEmAndamento: Promise<{ sucesso: boolean; mensagem: string; totalAlunos?: number }> | null = null;
-const CACHE_TTL_MS = 60_000;
-let statusVersao: { verificado: boolean; atualizado: boolean; versao?: string } = {
-  verificado: false,
-  atualizado: false,
-};
-
 export function normalizarAnoSemestre(valor: unknown): string {
   const texto = String(valor || '').trim();
   if (/^\d{4}\.[12]$/.test(texto)) return texto;
   const data = new Date(texto);
-  if (texto && !Number.isNaN(data.getTime())) {
-    return `${data.getFullYear()}.${data.getMonth() < 6 ? '1' : '2'}`;
-  }
-  return CONFIG.ANO_SEMESTRE_DEFAULT;
+  return texto && !Number.isNaN(data.getTime()) ? `${data.getFullYear()}.${data.getMonth() < 6 ? '1' : '2'}` : CONFIG.ANO_SEMESTRE_DEFAULT;
 }
 
 export function normalizarDataMatricula(valor: unknown): string {
   const texto = String(valor || '').trim();
-  if (!texto) return '';
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(texto)) return texto;
+  if (!texto || /^\d{2}\/\d{2}\/\d{4}$/.test(texto)) return texto;
   const data = new Date(texto);
   return Number.isNaN(data.getTime()) ? texto : data.toLocaleDateString('pt-BR');
 }
 
-export function dedupAlunos(lista: Aluno[]): Aluno[] {
-  const mapa = new Map<string, Aluno>();
-  for (const aluno of lista || []) {
-    if (!aluno) continue;
-    const cpf = limpaCPF(aluno.cpf || '');
-    const id = String(aluno.idAluno || '').trim();
-    const nome = String(aluno.nomeCompleto || '').trim().toLowerCase();
-    // CPF é a identidade principal do aluno. IDs diferentes com o mesmo CPF também são duplicados.
-    const chave = cpf ? `cpf:${cpf}` : id ? `id:${id}` : `nome:${nome}|${aluno.dataNascimento || ''}`;
-    const anterior = mapa.get(chave);
-    mapa.set(chave, anterior ? { ...anterior, ...aluno, fotoUrl: aluno.fotoUrl || anterior.fotoUrl } : aluno);
-  }
-  return [...mapa.values()];
+const pick = (record: Record<string, unknown>, ...keys: string[]) => {
+  for (const key of keys) if (record[key] !== undefined) return record[key];
+  return '';
+};
+
+function mapearAlunoBruto(raw: Record<string, unknown>, cpfFallback = ''): Aluno {
+  const nascimento = dataParaBR(String(pick(raw, 'Data de Nascimento', 'dataNascimento')));
+  return {
+    idAluno: String(pick(raw, 'ID_ALUNO', 'idAluno')),
+    cpf: String(pick(raw, 'CPF', 'cpf') || cpfFallback),
+    nomeCompleto: String(pick(raw, 'Nome Completo', 'nomeCompleto')),
+    telefoneAluno: String(pick(raw, 'Telefone do Aluno', 'telefoneAluno')),
+    dataNascimento: nascimento,
+    idade: Number(pick(raw, 'Idade', 'idade') || (nascimento ? calcularIdade(nascimento) : 0)),
+    naturalidade: String(pick(raw, 'Naturalidade', 'naturalidade')),
+    rg: String(pick(raw, 'RG', 'rg')),
+    orgaoEmissor: String(pick(raw, 'Órgão Emissor', 'orgaoEmissor')),
+    corEtnia: String(pick(raw, 'Cor / Etnia', 'corEtnia')),
+    genero: String(pick(raw, 'Gênero', 'genero')),
+    escolaEstuda: String(pick(raw, 'Escola em que estuda', 'escolaEstuda')),
+    serie: String(pick(raw, 'Série', 'serie')),
+    pcd: String(pick(raw, 'PCD', 'pcd')).toUpperCase() === 'SIM' || raw.pcd === true,
+    descricaoPcd: String(pick(raw, 'Descrição PCD', 'descricaoPcd')),
+    alergia: String(pick(raw, 'Alergia', 'alergia')).toUpperCase() === 'SIM' || raw.alergia === true,
+    descricaoAlergia: String(pick(raw, 'Descrição Alergia', 'descricaoAlergia')),
+    medicacao: String(pick(raw, 'Uso de Medicação', 'medicacao')).toUpperCase() === 'SIM' || raw.medicacao === true,
+    descricaoMedicacao: String(pick(raw, 'Descrição Medicação', 'descricaoMedicacao')),
+    enderecoRua: String(pick(raw, 'Endereço / Rua', 'enderecoRua')),
+    numero: String(pick(raw, 'Número', 'numero')),
+    cidade: String(pick(raw, 'Cidade', 'cidade')),
+    cep: String(pick(raw, 'CEP', 'cep')),
+    bairro: String(pick(raw, 'Bairro', 'bairro')),
+    nomePai: String(pick(raw, 'Nome do Pai', 'nomePai')),
+    telefonePai: String(pick(raw, 'Telefone do Pai', 'telefonePai')),
+    nomeMae: String(pick(raw, 'Nome da Mãe', 'nomeMae')),
+    telefoneMae: String(pick(raw, 'Telefone da Mãe', 'telefoneMae')),
+    fotoUrl: normalizarUrlFoto(String(pick(raw, 'Foto do aluno', 'fotoUrl'))),
+    responsavel: String(pick(raw, 'Responsavel', 'responsavel')),
+    responsavelCadastro: String(pick(raw, 'Responsavel pelo cadastro', 'responsavelCadastro')),
+  };
 }
 
-function chaveMatricula(m: Matricula): string {
-  return [m.idAluno, m.curso, m.horario, normalizarAnoSemestre(m.anoSemestre)]
-    .map((v) => String(v || '').trim().toLowerCase())
-    .join('|');
+function mapearMatriculaBruta(raw: Record<string, unknown>): Matricula {
+  const horario = String(pick(raw, 'Horário', 'horario')).replace('Núcleo de Teatro', 'Núcleo');
+  return {
+    idMatricula: String(pick(raw, 'ID_MATRICULA', 'idMatricula')),
+    idAluno: String(pick(raw, 'ID_ALUNO', 'idAluno')),
+    dataMatricula: normalizarDataMatricula(pick(raw, 'Data da Matrícula', 'dataMatricula')),
+    curso: String(pick(raw, 'Curso', 'curso')) as Matricula['curso'],
+    turma: String(pick(raw, 'Turma', 'turma')),
+    horario: horario as Matricula['horario'],
+    podeSairSozinho: String(pick(raw, 'Pode Sair Sozinho', 'podeSairSozinho')).toUpperCase() === 'SIM' || raw.podeSairSozinho === true,
+    utilizaraTransporte: String(pick(raw, 'Utilizará Transporte', 'utilizaraTransporte')).toUpperCase() === 'SIM' || raw.utilizaraTransporte === true,
+    anoSemestre: normalizarAnoSemestre(pick(raw, 'Ano/Semestre', 'anoSemestre')),
+    responsavelMatricula: String(pick(raw, 'Responsavel pela matricula', 'responsavelMatricula')),
+  };
+}
+
+export function dedupAlunos(lista: Aluno[]): Aluno[] {
+  const map = new Map<string, Aluno>();
+  for (const aluno of lista || []) map.set(limpaCPF(aluno.cpf) || aluno.idAluno, aluno);
+  return [...map.values()];
 }
 
 export function dedupMatriculas(lista: Matricula[]): Matricula[] {
-  const mapa = new Map<string, Matricula>();
-  for (const original of lista || []) {
-    if (!original?.idAluno) continue;
-    const mat: Matricula = {
-      ...original,
-      idMatricula: original.idMatricula || `MAT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      dataMatricula: normalizarDataMatricula(original.dataMatricula),
-      anoSemestre: normalizarAnoSemestre(original.anoSemestre),
-    };
-    const chave = chaveMatricula(mat);
-    const anterior = mapa.get(chave);
-    mapa.set(chave, anterior ? { ...anterior, ...mat, idMatricula: anterior.idMatricula } : mat);
-  }
-  return [...mapa.values()];
+  const map = new Map<string, Matricula>();
+  for (const matricula of lista || []) if (matricula.idMatricula) map.set(matricula.idMatricula, matricula);
+  return [...map.values()];
 }
 
-// Compatibilidade com os componentes existentes: agora estes métodos usam somente memória.
 export function getStoredAlunos(): Aluno[] { return [...cacheAlunos]; }
 export function getStoredMatriculas(): Matricula[] { return [...cacheMatriculas]; }
 export function saveStoredAlunos(alunos: Aluno[]): void { cacheAlunos = dedupAlunos(alunos); }
 export function saveStoredMatriculas(matriculas: Matricula[]): void { cacheMatriculas = dedupMatriculas(matriculas); }
 
-function mapearAlunoBruto(a: any, cpfFallback = ''): Aluno {
-  const nascimento = dataParaBR(String(a['Data de Nascimento'] || a.dataNascimento || ''));
-  return {
-    idAluno: String(a.ID_ALUNO || a.idAluno || ''),
-    cpf: String(a.CPF || a.cpf || cpfFallback),
-    nomeCompleto: String(a['Nome Completo'] || a.nomeCompleto || ''),
-    dataNascimento: nascimento,
-    idade: Number(a.Idade || a.idade || (nascimento ? calcularIdade(nascimento) : 0)),
-    naturalidade: String(a.Naturalidade || a.naturalidade || ''),
-    rg: String(a.RG || a.rg || ''),
-    orgaoEmissor: String(a['Órgão Emissor'] || a.orgaoEmissor || ''),
-    corEtnia: String(a['Cor / Etnia'] || a.corEtnia || ''),
-    genero: String(a.Gênero || a.genero || ''),
-    escolaEstuda: String(a['Escola em que estuda'] || a.escolaEstuda || ''),
-    serie: String(a.Série || a.serie || ''),
-    pcd: String(a.PCD || a.pcd).toUpperCase() === 'SIM' || a.pcd === true,
-    descricaoPcd: String(a['Descrição PCD'] || a.descricaoPcd || ''),
-    alergia: String(a.Alergia || a.alergia).toUpperCase() === 'SIM' || a.alergia === true,
-    descricaoAlergia: String(a['Descrição Alergia'] || a.descricaoAlergia || ''),
-    medicacao: String(a['Uso de Medicação'] || a.medicacao).toUpperCase() === 'SIM' || a.medicacao === true,
-    descricaoMedicacao: String(a['Descrição Medicação'] || a.descricaoMedicacao || ''),
-    enderecoRua: String(a['Endereço / Rua'] || a.enderecoRua || ''),
-    numero: String(a.Número || a.numero || ''),
-    cidade: String(a.Cidade || a.cidade || ''),
-    cep: String(a.CEP || a.cep || ''),
-    bairro: String(a.Bairro || a.bairro || ''),
-    nomePai: String(a['Nome do Pai'] || a.nomePai || ''),
-    telefonePai: String(a['Telefone do Pai'] || a.telefonePai || ''),
-    nomeMae: String(a['Nome da Mãe'] || a.nomeMae || ''),
-    telefoneMae: String(a['Telefone da Mãe'] || a.telefoneMae || ''),
-    fotoUrl: normalizarUrlFoto(String(a['Foto do aluno'] || a.fotoUrl || '')),
-    responsavel: String(a.Responsavel || a.responsavel || ''),
-    responsavelCadastro: String(a['Responsavel pelo cadastro'] || a.responsavelCadastro || ''),
-  };
+async function api<T = any>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}/${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+  });
+  const result = await response.json() as T & { sucesso?: boolean; mensagem?: string };
+  if (!response.ok || result.sucesso === false) throw new Error(result.mensagem || `Falha HTTP ${response.status}.`);
+  return result;
 }
 
-function mapearMatriculaBruta(m: any): Matricula {
-  const horarioRaw = String(m['Horário'] || m.horario || '');
-  const horario = horarioRaw === 'Núcleo de Teatro' ? 'Núcleo' : horarioRaw;
-  return {
-    idMatricula: String(m.ID_MATRICULA || m.idMatricula || ''),
-    idAluno: String(m.ID_ALUNO || m.idAluno || ''),
-    dataMatricula: normalizarDataMatricula(m['Data da Matrícula'] || m.dataMatricula),
-    curso: (m.Curso || m.curso || '') as Matricula['curso'],
-    turma: String(m.Turma || m.turma || ''),
-    horario: horario as Matricula['horario'],
-    podeSairSozinho: String(m['Pode Sair Sozinho'] || m.podeSairSozinho).toUpperCase() === 'SIM' || m.podeSairSozinho === true,
-    utilizaraTransporte: String(m['Utilizará Transporte'] || m.utilizaraTransporte).toUpperCase() === 'SIM' || m.utilizaraTransporte === true,
-    anoSemestre: normalizarAnoSemestre(m['Ano/Semestre'] || m.anoSemestre),
-    responsavelMatricula: String(m['Responsavel pela matricula'] || m.responsavelMatricula || ''),
-  };
-}
-
-async function lerJson(response: Response): Promise<any> {
-  if (!response.ok) throw new Error(`Falha HTTP ${response.status}.`);
-  return response.json();
-}
-
-async function getRemoto(params: Record<string, string>): Promise<any> {
-  const base = CONFIG.DEFAULT_APPS_SCRIPT_URL.trim();
-  if (!base) throw new Error('A URL do Apps Script não foi definida em src/config.ts.');
-  return lerJson(await fetch(`${base}?${new URLSearchParams(params).toString()}`, { cache: 'no-store' }));
-}
-
-async function postRemoto(body: Record<string, unknown>): Promise<any> {
-  const base = CONFIG.DEFAULT_APPS_SCRIPT_URL.trim();
-  if (!base) throw new Error('A URL do Apps Script não foi definida em src/config.ts.');
-  return lerJson(await fetch(base, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ ...body, clientVersion: APP_SCRIPT_VERSION }),
-  }));
-}
-
-async function postRemotoComNovaTentativa(body: Record<string, unknown>): Promise<any> {
-  try {
-    return await postRemoto(body);
-  } catch (error) {
-    // A atualização de aluno é idempotente quando conserva o ID. Se a conexão
-    // cair depois de o Apps Script gravar, repetir apenas atualiza a mesma linha.
-    if (!(error instanceof TypeError)) throw error;
-    try {
-      return await postRemoto(body);
-    } catch (segundaFalha) {
-      if (!(segundaFalha instanceof TypeError)) throw segundaFalha;
-
-      // Alguns navegadores bloqueiam a leitura da resposta quando o Web App do
-      // Apps Script redireciona o POST para googleusercontent.com. O modo
-      // no-cors ainda envia a gravação; a edição é segura para repetição porque
-      // salvarAluno conserva o ID e nunca cria uma matrícula.
-      const base = CONFIG.DEFAULT_APPS_SCRIPT_URL.trim();
-      await fetch(base, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ ...body, clientVersion: APP_SCRIPT_VERSION }),
-      });
-      return {
-        sucesso: true,
-        idAluno: String((body.aluno as Aluno | undefined)?.idAluno || ''),
-        mensagem: 'Alterações enviadas. A lista será sincronizada em seguida.',
-      };
-    }
-  }
-}
-
-async function exigirVersaoAtual(): Promise<void> {
-  if (!statusVersao.verificado) await apiService.verificarVersaoAppsScript();
-  if (!statusVersao.atualizado) {
-    throw new Error(`Apps Script desatualizado. Atualize para ${APP_SCRIPT_VERSION} antes de gravar ou excluir dados.`);
-  }
+function atualizarAluno(aluno: Aluno) {
+  cacheAlunos = dedupAlunos([...cacheAlunos.filter((item) => item.idAluno !== aluno.idAluno), aluno]);
 }
 
 export const apiService = {
-  getAppsScriptUrl(): string { return CONFIG.DEFAULT_APPS_SCRIPT_URL.trim(); },
-  setAppsScriptUrl(): void { /* A URL é alterada somente em src/config.ts. */ },
-  getDriveFolderUrl(): string { return ''; },
-  setDriveFolderUrl(): void { /* Pasta gerenciada no Apps Script. */ },
-  extractDriveFolderId(): string { return ''; },
+  getAppsScriptUrl: () => CONFIG.DEFAULT_APPS_SCRIPT_URL,
+  setAppsScriptUrl: () => undefined,
+  getDriveFolderUrl: () => '',
+  setDriveFolderUrl: () => undefined,
+  extractDriveFolderId: () => '',
 
-  async verificarVersaoAppsScript(): Promise<{ conectado: boolean; atualizado: boolean; versao?: string; mensagem: string }> {
+  async verificarVersaoAppsScript() {
     try {
-      const json = await getRemoto({ action: 'versao', t: String(Date.now()) });
-      const versao = String(json.versao || '');
-      statusVersao = { verificado: true, atualizado: !!json.sucesso && versao === APP_SCRIPT_VERSION, versao };
-      return {
-        conectado: !!json.sucesso,
-        atualizado: statusVersao.atualizado,
-        versao,
-        mensagem: statusVersao.atualizado
-          ? `Apps Script atualizado (${versao}).`
-          : `Apps Script desatualizado. Esperado: ${APP_SCRIPT_VERSION}; instalado: ${versao || 'sem versão'}.`,
-      };
+      await api('health');
+      return { conectado: true, atualizado: true, versao: 'D1', mensagem: 'Banco D1 conectado.' };
     } catch (error) {
-      statusVersao = { verificado: true, atualizado: false };
       return { conectado: false, atualizado: false, mensagem: error instanceof Error ? error.message : String(error) };
     }
   },
 
-  async obterFotoDataUrl(urlOuId: string): Promise<string> {
-    if (!urlOuId) return '';
-    if (urlOuId.startsWith('data:image/')) return urlOuId;
-    const id = extrairIdFotoDrive(urlOuId);
-    if (!id) return '';
-    const emCache = fotoDataUrlCache.get(id);
-    if (emCache) return emCache;
-    const resposta = await getRemoto({ action: 'obterFoto', id, t: String(Date.now()) });
-    if (!resposta.sucesso || !resposta.dataUrl) throw new Error(resposta.mensagem || 'Não foi possível carregar a foto.');
-    const dataUrl = String(resposta.dataUrl);
-    fotoDataUrlCache.set(id, dataUrl);
-    return dataUrl;
-  },
-
   async sincronizarComPlanilha(forcar = false): Promise<{ sucesso: boolean; mensagem: string; totalAlunos?: number }> {
-    const cacheValido = cacheAlunos.length > 0 && Date.now() - ultimaSincronizacao < CACHE_TTL_MS;
-    if (!forcar && cacheValido) {
-      return { sucesso: true, mensagem: `${cacheAlunos.length} aluno(s) disponíveis em memória.`, totalAlunos: cacheAlunos.length };
+    if (!forcar && cacheAlunos.length && Date.now() - ultimaSincronizacao < CACHE_TTL_MS) {
+      return { sucesso: true, mensagem: `${cacheAlunos.length} alunos no banco.`, totalAlunos: cacheAlunos.length };
     }
-    if (sincronizacaoEmAndamento) return sincronizacaoEmAndamento;
-
-    sincronizacaoEmAndamento = (async () => {
-      try {
-        const json = await getRemoto({ action: 'listarTodos', t: String(Date.now()) });
-        if (!json.sucesso) throw new Error(json.mensagem || 'Falha ao carregar a planilha.');
-        cacheAlunos = dedupAlunos((json.alunos || []).map(mapearAlunoBruto));
-        const idsAlunos = new Set(cacheAlunos.map((a) => a.idAluno));
-        cacheMatriculas = dedupMatriculas((json.matriculas || []).map(mapearMatriculaBruta))
-          .filter((m) => idsAlunos.has(m.idAluno));
+    if (carregamento) return carregamento;
+    carregamento = api<{ alunos: Record<string, unknown>[]; matriculas: Record<string, unknown>[] }>('data')
+      .then((result) => {
+        cacheAlunos = dedupAlunos((result.alunos || []).map((item) => mapearAlunoBruto(item)));
+        const ids = new Set(cacheAlunos.map((aluno) => aluno.idAluno));
+        cacheMatriculas = dedupMatriculas((result.matriculas || []).map((item) => mapearMatriculaBruta(item))).filter((item) => ids.has(item.idAluno));
         ultimaSincronizacao = Date.now();
-        return { sucesso: true, mensagem: `${cacheAlunos.length} aluno(s) carregado(s) da planilha.`, totalAlunos: cacheAlunos.length };
-      } catch (error) {
-        return { sucesso: false, mensagem: error instanceof Error ? error.message : String(error) };
-      } finally {
-        sincronizacaoEmAndamento = null;
-      }
-    })();
-
-    return sincronizacaoEmAndamento;
+        return { sucesso: true, mensagem: `${cacheAlunos.length} alunos carregados do banco.`, totalAlunos: cacheAlunos.length };
+      })
+      .catch((error) => ({ sucesso: false, mensagem: error instanceof Error ? error.message : String(error) }))
+      .finally(() => { carregamento = null; });
+    return carregamento;
   },
 
-  async obterRevisaoDados(): Promise<string> {
-    const json = await getRemoto({ action: 'estadoDados', t: String(Date.now()) });
-    if (!json.sucesso) throw new Error(json.mensagem || 'Não foi possível verificar atualizações.');
-    return String(json.revisao || '0');
-  },
-
-  async exportarBackup(): Promise<{ nomeArquivo: string; blob: Blob }> {
-    await exigirVersaoAtual();
-    const json = await getRemoto({ action: 'exportarBackup', clientVersion: APP_SCRIPT_VERSION, t: String(Date.now()) });
-    if (!json.sucesso || !json.base64) throw new Error(json.mensagem || 'Não foi possível gerar o backup.');
-    const binario = atob(String(json.base64));
-    const bytes = new Uint8Array(binario.length);
-    for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
-    return { nomeArquivo: String(json.nomeArquivo || 'backup_matriculas.xlsx'), blob: new Blob([bytes], { type: String(json.mimeType || 'application/octet-stream') }) };
-  },
-
-  async listarAlunosParaAutocomplete(): Promise<Aluno[]> {
+  async listarAlunosParaAutocomplete() {
     if (!cacheAlunos.length) await this.sincronizarComPlanilha();
     return getStoredAlunos();
   },
 
-  async buscarAlunoPorCPF(termo: string): Promise<{ encontrado: boolean; aluno?: Aluno; mensagem?: string }> {
-    const busca = termo.trim();
-    const digits = limpaCPF(busca);
-    const nomeBusca = busca.toLocaleLowerCase('pt-BR');
-
+  async buscarAlunoPorCPF(termo: string) {
     if (!cacheAlunos.length) await this.sincronizarComPlanilha();
-
-    const alunoLocal = cacheAlunos.find((aluno) => {
-      if (digits.length === 11 && limpaCPF(aluno.cpf || '') === digits) return true;
-      const nome = String(aluno.nomeCompleto || '').trim().toLocaleLowerCase('pt-BR');
-      return nome === nomeBusca || nome.includes(nomeBusca);
-    });
-    if (alunoLocal) return { encontrado: true, aluno: { ...alunoLocal } };
-
-    // Consulta remota como fallback, útil quando outro usuário cadastrou alguém após o cache atual.
-    const json = await getRemoto({ action: 'buscarAluno', termo: busca, t: String(Date.now()) });
-    if (json.sucesso && json.encontrado && json.aluno) {
-      const aluno = mapearAlunoBruto(json.aluno, termo);
-      cacheAlunos = dedupAlunos([...cacheAlunos, aluno]);
-      return { encontrado: true, aluno };
-    }
-    return { encontrado: false, mensagem: json.mensagem || 'Aluno não encontrado.' };
+    const cpf = limpaCPF(termo);
+    const nome = termo.trim().toLocaleLowerCase('pt-BR');
+    const aluno = cacheAlunos.find((item) => (cpf.length === 11 && limpaCPF(item.cpf) === cpf)
+      || item.nomeCompleto.toLocaleLowerCase('pt-BR') === nome);
+    return aluno ? { encontrado: true, aluno: { ...aluno } } : { encontrado: false, mensagem: 'Aluno não encontrado.' };
   },
 
-  async obterAlunoAtualizado(idAluno?: string, cpf?: string): Promise<Aluno | null> {
+  async obterAlunoAtualizado(idAluno?: string, cpf?: string) {
     await this.sincronizarComPlanilha(true);
-    const id = String(idAluno || '').trim();
-    const cpfLimpo = limpaCPF(String(cpf || ''));
-    const encontrado = cacheAlunos.find((item) =>
-      (id && String(item.idAluno || '').trim() === id)
-      || (cpfLimpo && limpaCPF(item.cpf || '') === cpfLimpo)
-    );
-    return encontrado ? { ...encontrado } : null;
+    return cacheAlunos.find((item) => item.idAluno === idAluno || limpaCPF(item.cpf) === limpaCPF(cpf || '')) || null;
   },
 
-  async salvarAlunoSomente(aluno: Aluno): Promise<{ sucesso: boolean; idAluno: string; mensagem: string }> {
-    await exigirVersaoAtual();
-    const json = await postRemotoComNovaTentativa({ action: 'salvarAluno', aluno });
-    if (!json.sucesso) throw new Error(json.mensagem || 'Não foi possível salvar o aluno.');
-    cacheAlunos = dedupAlunos([...cacheAlunos, mapearAlunoBruto(aluno)]);
-    void this.sincronizarComPlanilha(true);
-    return { sucesso: true, idAluno: String(json.idAluno || aluno.idAluno), mensagem: json.mensagem || 'Aluno salvo.' };
+  async salvarAlunoSomente(aluno: Aluno) {
+    const result = await api<{ idAluno: string; aluno: Aluno; mensagem: string }>('alunos', { method: 'POST', body: JSON.stringify({ aluno }) });
+    atualizarAluno(mapearAlunoBruto(result.aluno as unknown as Record<string, unknown>));
+    return { sucesso: true, idAluno: result.idAluno, mensagem: result.mensagem };
   },
 
-  async salvarAlunoEMatricula(aluno: Aluno, matricula: Matricula): Promise<{ sucesso: boolean; idAluno: string; idMatricula: string; mensagem: string }> {
-    await exigirVersaoAtual();
-    await this.sincronizarComPlanilha(true);
-    const duplicada = cacheMatriculas.find((existente) =>
-      chaveMatricula(existente) === chaveMatricula({ ...matricula, idAluno: aluno.idAluno })
-      && existente.idMatricula !== matricula.idMatricula
-    );
-    if (duplicada) {
-      throw new Error(
-        `Este aluno já está matriculado em ${matricula.curso} (${matricula.horario}) no período ${normalizarAnoSemestre(matricula.anoSemestre)}. `
-        + `Matrícula existente: ${duplicada.idMatricula}.`
-      );
-    }
-    const json = await postRemoto({ action: 'salvarAlunoEMatricula', aluno, matricula });
-    if (!json.sucesso) throw new Error(json.mensagem || 'Não foi possível salvar a matrícula.');
-    await this.sincronizarComPlanilha(true);
+  async salvarAlunoEMatricula(aluno: Aluno, matricula: Matricula) {
+    const result = await api<{ idAluno: string; idMatricula: string; mensagem: string }>('matriculas', { method: 'POST', body: JSON.stringify({ aluno, matricula }) });
+    atualizarAluno({ ...aluno, idAluno: result.idAluno });
+    cacheMatriculas = dedupMatriculas([...cacheMatriculas, { ...matricula, idAluno: result.idAluno, idMatricula: result.idMatricula }]);
+    return { sucesso: true, ...result };
+  },
+
+  async excluirAlunoRemoto(idAluno: string, usuario = 'Não informado') {
+    try {
+      const result = await api<{ mensagem: string }>(`alunos/${encodeURIComponent(idAluno)}`, { method: 'DELETE', body: JSON.stringify({ usuario }) });
+      cacheAlunos = cacheAlunos.filter((item) => item.idAluno !== idAluno);
+      cacheMatriculas = cacheMatriculas.filter((item) => item.idAluno !== idAluno);
+      return { sucesso: true, mensagem: result.mensagem };
+    } catch (error) { return { sucesso: false, mensagem: error instanceof Error ? error.message : String(error) }; }
+  },
+
+  async excluirMatriculaRemoto(idMatricula: string, usuario = 'Não informado') {
+    try {
+      const result = await api<{ mensagem: string }>(`matriculas/${encodeURIComponent(idMatricula)}`, { method: 'DELETE', body: JSON.stringify({ usuario }) });
+      cacheMatriculas = cacheMatriculas.filter((item) => item.idMatricula !== idMatricula);
+      return { sucesso: true, mensagem: result.mensagem };
+    } catch (error) { return { sucesso: false, mensagem: error instanceof Error ? error.message : String(error) }; }
+  },
+
+  async obterRevisaoDados() {
+    const result = await api<{ revisao: string }>('revision');
+    return result.revisao;
+  },
+
+  async removerAlunosDuplicados(_usuario?: string) {
+    return { sucesso: true, mensagem: 'O D1 já mantém um único aluno por CPF.', removidos: 0 };
+  },
+
+  async obterFotoDataUrl(url: string) {
+    if (!url || url.startsWith('data:image/')) return url;
+    const cached = fotoDataUrlCache.get(url);
+    if (cached) return cached;
+    const result = await api<{ dataUrl: string }>(`photo?url=${encodeURIComponent(url)}`);
+    fotoDataUrlCache.set(url, result.dataUrl);
+    return result.dataUrl;
+  },
+
+  async exportarBackup(): Promise<{ nomeArquivo: string; blob: Blob }> {
+    const dados = await api<{ alunos: Aluno[]; matriculas: Matricula[] }>('data');
+    const respostaTurmas = await api<{ turmas: Record<string, unknown>[] }>('turmas');
+    const exigirLista = (valor: unknown, nome: string): Record<string, unknown>[] => {
+      if (!Array.isArray(valor)) throw new Error(`Não foi possível gerar o backup: ${nome} não retornou uma lista válida.`);
+      const registros: Record<string, unknown>[] = [];
+      for (const item of valor) if (item && typeof item === 'object' && !Array.isArray(item)) registros.push(item as Record<string, unknown>);
+      return registros;
+    };
+    const alunosBackup = exigirLista(dados.alunos, 'alunos');
+    const matriculasBackup = exigirLista(dados.matriculas, 'matrículas');
+    const turmasBackup = exigirLista(respostaTurmas.turmas, 'turmas');
+    const escapar = (valor: unknown) => {
+      let texto = Array.isArray(valor) || (valor && typeof valor === 'object') ? JSON.stringify(valor) : String(valor ?? '');
+      if (/^[=+\-@]/.test(texto)) texto = `'${texto}`;
+      return `"${texto.replace(/"/g, '""')}"`;
+    };
+    const secao = (titulo: string, registros: Record<string, unknown>[]) => {
+      const conjuntoColunas = new Set<string>();
+      for (const registro of registros) for (const coluna of Object.keys(registro)) conjuntoColunas.add(coluna);
+      const colunas = Array.from(conjuntoColunas);
+      const linhas = [escapar(titulo), colunas.map(escapar).join(';')];
+      for (const registro of registros) linhas.push(colunas.map((coluna) => escapar(registro[coluna])).join(';'));
+      return linhas.join('\r\n');
+    };
+    const conteudo = [
+      secao('ALUNOS', alunosBackup),
+      secao('MATRÍCULAS', matriculasBackup),
+      secao('TURMAS', turmasBackup),
+    ].join('\r\n\r\n');
+    const agora = new Date();
+    const carimbo = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}_${String(agora.getHours()).padStart(2, '0')}-${String(agora.getMinutes()).padStart(2, '0')}`;
     return {
-      sucesso: true,
-      idAluno: String(json.idAluno || ''),
-      idMatricula: String(json.idMatricula || ''),
-      mensagem: json.mensagem || 'Matrícula salva.',
+      nomeArquivo: `backup_matriculas_${carimbo}.csv`,
+      blob: new Blob([`\uFEFF${conteudo}`], { type: 'text/csv;charset=utf-8' }),
     };
   },
 
-
-  async removerAlunosDuplicados(usuario = 'Administrador'): Promise<{ sucesso: boolean; mensagem: string; removidos: number }> {
-    await exigirVersaoAtual();
-    const json = await postRemoto({ action: 'removerDuplicados', usuario });
-    if (!json.sucesso) throw new Error(json.mensagem || 'Não foi possível remover os registros duplicados.');
-    await this.sincronizarComPlanilha(true);
-    return {
-      sucesso: true,
-      mensagem: String(json.mensagem || 'Desduplicação concluída.'),
-      removidos: Number(json.removidos || 0),
-    };
-  },
-
-  async excluirAlunoRemoto(idAluno: string, usuario = 'Não informado'): Promise<{ sucesso: boolean; mensagem: string }> {
-    try {
-      await exigirVersaoAtual();
-      const json = await getRemoto({ action: 'excluirAluno', idAluno, usuario, clientVersion: APP_SCRIPT_VERSION, t: String(Date.now()) });
-      if (json.sucesso) await this.sincronizarComPlanilha(true);
-      return { sucesso: !!json.sucesso, mensagem: json.mensagem || '' };
-    } catch (error) {
-      return { sucesso: false, mensagem: error instanceof Error ? error.message : String(error) };
-    }
-  },
-
-  async excluirMatriculaRemoto(idMatricula: string, usuario = 'Não informado'): Promise<{ sucesso: boolean; mensagem: string }> {
-    try {
-      await exigirVersaoAtual();
-      const json = await getRemoto({ action: 'excluirMatricula', idMatricula, usuario, clientVersion: APP_SCRIPT_VERSION, t: String(Date.now()) });
-      if (json.sucesso) await this.sincronizarComPlanilha(true);
-      return { sucesso: !!json.sucesso, mensagem: json.mensagem || '' };
-    } catch (error) {
-      return { sucesso: false, mensagem: error instanceof Error ? error.message : String(error) };
-    }
+  iniciarBackupAutomatico() {
+    const flush = () => void api('outbox/flush', { method: 'POST' }).catch(() => undefined);
+    const timer = window.setInterval(flush, 120_000);
+    flush();
+    return () => window.clearInterval(timer);
   },
 };

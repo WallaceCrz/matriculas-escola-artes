@@ -8,16 +8,24 @@ import { EtapaDadosMatricula } from './components/EtapaDadosMatricula';
 import { EtapaSucessoPDF } from './components/EtapaSucessoPDF';
 import { PainelAdmin } from './components/PainelAdmin';
 import { ModalAppsScript } from './components/ModalAppsScript';
-import { apiService } from './services/api';
+import { apiService, getStoredMatriculas } from './services/api';
 import { CONFIG } from './config';
 import { Login } from './components/Login';
 import { obterSessao, sair, SessaoUsuario } from './services/auth';
 import { GlobalFeedback } from './components/GlobalFeedback';
 import { uiFeedback } from './services/uiFeedback';
+import { MenuInicial, TelaApp } from './components/MenuInicial';
+import { TurmasPage } from './components/TurmasPage';
+import { ConsultaAlunos } from './components/ConsultaAlunos';
+import { FrequenciaEmProgresso } from './components/FrequenciaEmProgresso';
+import { FichaAluno } from './components/FichaAluno';
+import { MenuLateral } from './components/MenuLateral';
+import { ArrowLeft } from 'lucide-react';
 
 const ALUNO_INITIAL_STATE: Aluno = {
   idAluno: '',
   nomeCompleto: '',
+  telefoneAluno: '',
   dataNascimento: '',
   idade: 0,
   naturalidade: '',
@@ -62,7 +70,7 @@ const MATRICULA_INITIAL_STATE: Matricula = {
 };
 
 export default function App() {
-  const [modoVisualizacao, setModoVisualizacao] = useState<'matricula' | 'alunos' | 'admin'>('matricula');
+  const [modoVisualizacao, setModoVisualizacao] = useState<TelaApp>('inicio');
   const [sessao, setSessao] = useState<SessaoUsuario | null>(obterSessao());
   const [etapaAtual, setEtapaAtual] = useState<EtapaFormulario>(1);
   const [cpf, setCpf] = useState<string>('');
@@ -76,12 +84,15 @@ export default function App() {
   const [modalConfigAberto, setModalConfigAberto] = useState<boolean>(false);
   const [appsScriptConectado, setAppsScriptConectado] = useState<boolean>(false);
   const [editandoAluno, setEditandoAluno] = useState(false);
+  const [alunoEmFicha, setAlunoEmFicha] = useState<Aluno | null>(null);
 
   useEffect(() => {
     apiService.verificarVersaoAppsScript()
       .then((status) => setAppsScriptConectado(status.conectado && status.atualizado))
       .catch(() => setAppsScriptConectado(false));
   }, []);
+
+  useEffect(() => apiService.iniciarBackupAutomatico(), []);
 
   const handleAlunoEncontrado = (alunoEncontrado: Aluno) => {
     setAluno(alunoEncontrado);
@@ -92,6 +103,15 @@ export default function App() {
   const handleNovoAluno = () => {
     setAluno({ ...ALUNO_INITIAL_STATE, cpf });
     setEtapaAtual(2); // Avança para foto
+  };
+
+  const handleCadastrarNovoConsulta = (cpfNovo: string) => {
+    setCpf(cpfNovo);
+    setAluno({ ...ALUNO_INITIAL_STATE, cpf: cpfNovo });
+    setMatricula(MATRICULA_INITIAL_STATE);
+    setEditandoAluno(false);
+    setModoVisualizacao('matriculas');
+    setEtapaAtual(2);
   };
 
   const handleFinalizarMatricula = async (matriculaPassada?: Matricula) => {
@@ -117,12 +137,38 @@ export default function App() {
   };
 
   const handleEditarAluno = (alunoEditar: Aluno) => {
-    setAluno(alunoEditar); setCpf(alunoEditar.cpf); setEditandoAluno(true); setModoVisualizacao('matricula'); setEtapaAtual(3);
+    setAluno(alunoEditar); setCpf(alunoEditar.cpf); setEditandoAluno(true); setModoVisualizacao('matriculas'); setEtapaAtual(2);
   };
 
   const handleAdicionarMatricula = (alunoMatricular: Aluno) => {
     setAluno(alunoMatricular); setCpf(alunoMatricular.cpf); setMatricula({ ...MATRICULA_INITIAL_STATE, idAluno: alunoMatricular.idAluno, responsavelMatricula: sessao?.nome || 'Não informado' });
-    setEditandoAluno(false); setModoVisualizacao('matricula'); setEtapaAtual(4);
+    setEditandoAluno(false); setModoVisualizacao('matriculas'); setEtapaAtual(2);
+  };
+
+  const handleEditarMatricula = (alunoMatricula: Aluno, matriculaEditar: Matricula) => {
+    setAluno(alunoMatricula); setCpf(alunoMatricula.cpf); setMatricula(matriculaEditar);
+    setEditandoAluno(false); setModoVisualizacao('matriculas'); setEtapaAtual(4);
+  };
+
+  const handleExcluirMatricula = async (matriculaExcluir: Matricula) => {
+    if (!confirm(`Excluir a matrícula ${matriculaExcluir.idMatricula}?`)) return;
+    const resultado = await apiService.excluirMatriculaRemoto(matriculaExcluir.idMatricula, sessao?.nome || 'Não informado');
+    if (!resultado.sucesso) {
+      uiFeedback.notify(resultado.mensagem || 'Não foi possível excluir a matrícula.', 'error');
+      return;
+    }
+    uiFeedback.notify('Matrícula excluída com sucesso.', 'success');
+  };
+
+  const handleExcluirAluno = async (alunoExcluir: Aluno) => {
+    if (!confirm(`Excluir permanentemente ${alunoExcluir.nomeCompleto} e todas as matrículas?`)) return;
+    const resultado = await apiService.excluirAlunoRemoto(alunoExcluir.idAluno, sessao?.nome || 'Não informado');
+    if (!resultado.sucesso) {
+      uiFeedback.notify(resultado.mensagem || 'Não foi possível excluir o aluno.', 'error');
+      return;
+    }
+    setAlunoEmFicha(null);
+    uiFeedback.notify('Aluno excluído com sucesso.', 'success');
   };
 
   const handleSalvarEdicaoAluno = async () => {
@@ -134,7 +180,7 @@ export default function App() {
       if (alunoAtualizado) setAluno(alunoAtualizado);
       uiFeedback.notify(res.mensagem, 'success');
       setEditandoAluno(false);
-      setModoVisualizacao('alunos');
+      setModoVisualizacao('consulta');
     } catch (err) { uiFeedback.notify(err instanceof Error ? err.message : 'Erro ao salvar aluno.', 'error'); } finally { setSalvando(false); uiFeedback.hideProgress(); }
   };
 
@@ -147,6 +193,14 @@ export default function App() {
     setEtapaAtual(1);
   };
 
+  const handleVoltarGlobal = () => {
+    if (modoVisualizacao === 'matriculas' && etapaAtual > 1 && etapaAtual < 5) {
+      setEtapaAtual((etapaAtual - 1) as EtapaFormulario);
+      return;
+    }
+    setModoVisualizacao('inicio');
+  };
+
   if (!sessao) return <Login onLogin={setSessao} />;
 
   return (
@@ -156,16 +210,21 @@ export default function App() {
         onAbrirModalConfig={() => setModalConfigAberto(true)}
         appsScriptConectado={appsScriptConectado}
         modoVisualizacao={modoVisualizacao}
-        setModoVisualizacao={(modo) => { if (modo !== 'admin' || sessao.admin) setModoVisualizacao(modo); }}
+        setModoVisualizacao={(modo) => { if (modo !== 'configuracoes' || sessao.admin) setModoVisualizacao(modo); }}
         sessao={sessao}
-        onSair={() => { sair(); setSessao(null); setModoVisualizacao('matricula'); }}
+        onSair={() => { sair(); setSessao(null); setModoVisualizacao('inicio'); }}
       />
 
-      <main className="flex-1 px-4 py-6">
-        {modoVisualizacao === 'admin' ? (
-          sessao.admin ? <PainelAdmin modo="admin" /> : <div className="max-w-xl mx-auto bg-rose-50 border border-rose-200 rounded-xl p-6 text-rose-800 font-bold">Acesso restrito ao administrador.</div>
-        ) : modoVisualizacao === 'alunos' ? (
-          <PainelAdmin modo="alunos" sessao={sessao} onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} />
+      <div className="flex flex-1 min-h-0">
+      <MenuLateral sessao={sessao} atual={modoVisualizacao} onAbrir={setModoVisualizacao}/>
+      <main className="flex-1 min-w-0 px-4 py-6">
+        {modoVisualizacao !== 'inicio' && <div className="max-w-7xl mx-auto mb-4"><button type="button" onClick={handleVoltarGlobal} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50"><ArrowLeft className="w-4 h-4"/>Voltar</button></div>}
+        {modoVisualizacao === 'inicio' ? <MenuInicial sessao={sessao} onAbrir={setModoVisualizacao}/>
+        : modoVisualizacao === 'turmas' ? <TurmasPage sessao={sessao} onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula}/>
+        : modoVisualizacao === 'consulta' ? <ConsultaAlunos onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onCadastrarNovo={handleCadastrarNovoConsulta} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula}/>
+        : modoVisualizacao === 'frequencia' ? <FrequenciaEmProgresso/>
+        : modoVisualizacao === 'configuracoes' ? (
+          sessao.admin ? <PainelAdmin modo="admin" onExibirAluno={setAlunoEmFicha}/> : <div className="max-w-xl mx-auto bg-rose-50 border border-rose-200 rounded-xl p-6 text-rose-800 font-bold">Acesso restrito ao administrador.</div>
         ) : (
           <>
             {etapaAtual === 1 && (
@@ -218,6 +277,7 @@ export default function App() {
           </>
         )}
       </main>
+      </div>
 
       <footer className="bg-indigo-950 text-indigo-300 text-xs py-4 text-center border-t border-indigo-900">
         <p className="max-w-4xl mx-auto px-4">
@@ -232,6 +292,7 @@ export default function App() {
         onClose={() => setModalConfigAberto(false)}
         onStatusChange={(conectado) => setAppsScriptConectado(conectado)}
       />
+      {alunoEmFicha && <FichaAluno aluno={alunoEmFicha} matriculas={getStoredMatriculas().filter(m=>m.idAluno===alunoEmFicha.idAluno)} onFechar={()=>setAlunoEmFicha(null)} onEditar={()=>handleEditarAluno(alunoEmFicha)} onMatricular={()=>handleAdicionarMatricula(alunoEmFicha)} onExcluir={()=>handleExcluirAluno(alunoEmFicha)} onEditarMatricula={m=>handleEditarMatricula(alunoEmFicha,m)} onExcluirMatricula={handleExcluirMatricula}/>}
     </div>
   );
 }

@@ -20,7 +20,7 @@ const fieldStartingWith = (record, prefix) => {
   return key ? record[key] : '';
 };
 
-const statements = ['PRAGMA foreign_keys = ON;', 'BEGIN TRANSACTION;'];
+const statements = ['PRAGMA foreign_keys = ON;'];
 for (const aluno of source.alunos || []) {
   statements.push(
     `INSERT INTO alunos (id_aluno, cpf, nome_completo, telefone_aluno, dados_json) VALUES (${quote(field(aluno, 'ID_ALUNO', 'idAluno'))}, ${quote(field(aluno, 'CPF', 'cpf'))}, ${quote(field(aluno, 'Nome Completo', 'nomeCompleto'))}, ${quote(field(aluno, 'Telefone do Aluno', 'telefoneAluno'))}, ${json(aluno)}) ON CONFLICT(id_aluno) DO UPDATE SET cpf=excluded.cpf, nome_completo=excluded.nome_completo, telefone_aluno=excluded.telefone_aluno, dados_json=excluded.dados_json, updated_at=CURRENT_TIMESTAMP;`,
@@ -42,6 +42,5 @@ for (const turma of turmasSource.turmas || []) {
   }
 }
 
-statements.push('COMMIT;');
 await writeFile(outputPath, `${statements.join('\n')}\n`, 'utf8');
 console.log(JSON.stringify({ alunos: source.alunos?.length || 0, matriculas: source.matriculas?.length || 0, turmas: turmasSource.turmas?.length || 0 }));

@@ -30,6 +30,8 @@ export interface Aluno {
   fotoUrl: string; // Base64 apenas durante o cadastro; URL do Drive após salvar
   responsavel?: string; // Responsável legal que assinará quando o aluno for menor.
   responsavelCadastro?: string;
+  situacao?: 'Ativo' | 'Inativo' | 'Cancelado';
+  observacoes?: string;
 }
 
 export interface Matricula {

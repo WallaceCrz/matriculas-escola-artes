@@ -58,7 +58,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
       setErro('');
 
       if (pdfDocRef.current) {
-        try { pdfDocRef.current.destroy(); } catch {}
+        try { await (pdfDocRef.current as { destroy?: () => Promise<void> }).destroy?.(); } catch {}
         pdfDocRef.current = null;
       }
 
@@ -73,7 +73,7 @@ export const PDFCanvasViewer: React.FC<PDFCanvasViewerProps> = ({
 
         const doc = await pdfjsLib.getDocument(pdfSource).promise;
         if (cancelado) {
-          try { doc.destroy(); } catch {}
+          try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch {}
           return;
         }
 

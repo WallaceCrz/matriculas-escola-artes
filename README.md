@@ -1,10 +1,10 @@
 # Matrículas Escola de Artes
 
-Aplicativo React + Vite para cadastro de alunos e matrículas, integrado ao Google Sheets, Google Drive e Google Apps Script.
+Aplicativo React + Vite para cadastro de alunos e matrículas. O Cloudflare D1 é a fonte principal dos dados; Google Sheets, Google Drive e Google Apps Script são usados para backup, fotos e integrações.
 
 ## Recursos da versão 1.0
 
-- Cadastro, edição e exclusão de alunos e matrículas na planilha.
+- Cadastro, edição e exclusão de alunos e matrículas no D1, com sincronização da planilha em segundo plano.
 - Fotos armazenadas no Google Drive; a planilha guarda somente o link.
 - Login administrativo local e usuários comuns na aba `LOGINS`.
 - PDF com layout oficial em `src/services/pdfLayout.saved.ts`.
@@ -36,16 +36,18 @@ O Apps Script cria e mantém estas abas:
 A versão obrigatória do Apps Script é:
 
 ```text
-EA_APP_2026_07_29_05
+EA_APP_2026_08_20_01
 ```
 
 ## Painel inicial, professores e turmas
 
-Após o login, o sistema apresenta um painel de opções com Turmas, Consulta, Matrículas, Frequência e, para administradores, Configurações. Usuários cadastrados com o perfil `professor` podem montar turmas e adicionar ou remover alunos conforme o curso e horário de suas matrículas.
+Após o login, o sistema apresenta um painel de opções com Turmas, Consulta e, para administradores, Configurações. O fluxo de Matrículas continua disponível pela navegação do sistema. Usuários cadastrados com o perfil `professor` podem montar turmas e adicionar ou remover alunos conforme o curso e horário de suas matrículas.
 
 O sistema fornece nove turmas iniciais: Música Manhã/Tarde/Noite, Teatro Manhã, Teatro Núcleo e as divisões Sementes/Aperfeiçoamento para Teatro Tarde e Teatro Noite. Novas turmas podem ser criadas pelo painel.
 
-Para compartilhar turmas e o perfil Professor entre todos os dispositivos, implante novamente o arquivo `Code.gs`. Antes dessa implantação, previews mantêm alterações de turmas somente no navegador usado para o teste.
+Turmas e perfis de usuário são mantidos no D1 e sincronizados com a planilha pelo `Code.gs` publicado.
+
+Na ficha do aluno, a situação (`Ativo`, `Inativo` ou `Cancelado`) e as observações podem ser atualizadas diretamente. A página de Turmas também exporta um arquivo `.xlsx` no formato do formulário institucional, criando uma aba por turma e incluindo somente os alunos adicionados à respectiva turma.
 
 ## Desenvolvimento
 

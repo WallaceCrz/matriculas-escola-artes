@@ -1,4 +1,4 @@
-const APP_VERSION = 'EA_APP_2026_07_29_05';
+const APP_VERSION = 'EA_APP_2026_08_20_01';
 const ABA_ALUNOS = 'ALUNOS';
 const ABA_MATRICULAS = 'MATRICULAS';
 const ABA_EXCLUIDOS = 'EXCLUIDOS';
@@ -68,7 +68,7 @@ function validarVersao(clientVersion) {
 
 function garantirEstrutura() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  garantirAba(ss, ABA_ALUNOS, ['ID_ALUNO','CPF','Nome Completo','Telefone do Aluno','Data de Nascimento','Idade','Naturalidade','RG','Órgão Emissor','Cor / Etnia','Gênero','Escola em que estuda','Série','PCD','Descrição PCD','Alergia','Descrição Alergia','Uso de Medicação','Descrição Medicação','Endereço / Rua','Número','Cidade','CEP','Bairro','Nome do Pai','Telefone do Pai','Nome da Mãe','Telefone da Mãe','Foto do aluno','Responsavel','Responsavel pelo cadastro']);
+  garantirAba(ss, ABA_ALUNOS, ['ID_ALUNO','CPF','Nome Completo','Telefone do Aluno','Data de Nascimento','Idade','Naturalidade','RG','Órgão Emissor','Cor / Etnia','Gênero','Escola em que estuda','Série','PCD','Descrição PCD','Alergia','Descrição Alergia','Uso de Medicação','Descrição Medicação','Endereço / Rua','Número','Cidade','CEP','Bairro','Nome do Pai','Telefone do Pai','Nome da Mãe','Telefone da Mãe','Foto do aluno','Responsavel','Responsavel pelo cadastro','Situação','Observações']);
   garantirAba(ss, ABA_MATRICULAS, ['ID_MATRICULA','ID_ALUNO','Data da Matrícula','Curso','Turma','Horário','Pode Sair Sozinho','Utilizará Transporte','Ano/Semestre','Responsavel pela matricula']);
   garantirAba(ss, ABA_EXCLUIDOS, ['ID_LOG','Data/Hora','Usuário responsável','Tipo do registro','ID_ALUNO','ID_MATRICULA','Dados completos (JSON)']);
   garantirAba(ss, ABA_LOGINS, ['NOME','LOGIN','SENHA','PERFIL']);
@@ -143,7 +143,7 @@ function salvarFotoNoDrive(foto, idAluno) {
 }
 
 function alunoObj(a, fotoUrl) {
-  return {'ID_ALUNO':a.idAluno,'CPF':a.cpf,'Nome Completo':a.nomeCompleto,'Data de Nascimento':a.dataNascimento,'Idade':a.idade,'Naturalidade':a.naturalidade,'RG':a.rg,'Órgão Emissor':a.orgaoEmissor,'Cor / Etnia':a.corEtnia,'Gênero':a.genero,'Escola em que estuda':a.escolaEstuda,'Série':a.serie,'PCD':a.pcd?'SIM':'NÃO','Descrição PCD':a.descricaoPcd,'Alergia':a.alergia?'SIM':'NÃO','Descrição Alergia':a.descricaoAlergia,'Uso de Medicação':a.medicacao?'SIM':'NÃO','Descrição Medicação':a.descricaoMedicacao,'Endereço / Rua':a.enderecoRua,'Número':a.numero,'Cidade':a.cidade,'CEP':a.cep,'Bairro':a.bairro,'Nome do Pai':a.nomePai,'Telefone do Pai':a.telefonePai,'Nome da Mãe':a.nomeMae,'Telefone da Mãe':a.telefoneMae,'Foto do aluno':fotoUrl,'Responsavel':a.responsavel || '','Responsavel pelo cadastro':a.responsavelCadastro};
+  return {'ID_ALUNO':a.idAluno,'CPF':a.cpf,'Nome Completo':a.nomeCompleto,'Telefone do Aluno':a.telefoneAluno || '','Data de Nascimento':a.dataNascimento,'Idade':a.idade,'Naturalidade':a.naturalidade,'RG':a.rg,'Órgão Emissor':a.orgaoEmissor,'Cor / Etnia':a.corEtnia,'Gênero':a.genero,'Escola em que estuda':a.escolaEstuda,'Série':a.serie,'PCD':a.pcd?'SIM':'NÃO','Descrição PCD':a.descricaoPcd,'Alergia':a.alergia?'SIM':'NÃO','Descrição Alergia':a.descricaoAlergia,'Uso de Medicação':a.medicacao?'SIM':'NÃO','Descrição Medicação':a.descricaoMedicacao,'Endereço / Rua':a.enderecoRua,'Número':a.numero,'Cidade':a.cidade,'CEP':a.cep,'Bairro':a.bairro,'Nome do Pai':a.nomePai,'Telefone do Pai':a.telefonePai,'Nome da Mãe':a.nomeMae,'Telefone da Mãe':a.telefoneMae,'Foto do aluno':fotoUrl,'Responsavel':a.responsavel || '','Responsavel pelo cadastro':a.responsavelCadastro,'Situação':a.situacao || 'Ativo','Observações':a.observacoes || ''};
 }
 function matriculaObj(m) {
   return {'ID_MATRICULA':m.idMatricula,'ID_ALUNO':m.idAluno,'Data da Matrícula':m.dataMatricula,'Curso':m.curso,'Turma':m.turma || '','Horário':m.horario,'Pode Sair Sozinho':m.podeSairSozinho?'SIM':'NÃO','Utilizará Transporte':m.utilizaraTransporte?'SIM':'NÃO','Ano/Semestre':m.anoSemestre,'Responsavel pela matricula':m.responsavelMatricula};

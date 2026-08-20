@@ -1,4 +1,4 @@
-const APP_SCRIPT_VERSION = 'EA_APP_2026_07_29_05';
+const APP_SCRIPT_VERSION = 'EA_APP_2026_08_20_01';
 
 const json = (data, status = 200) => Response.json(data, { status });
 const id = (prefix, received) => String(received || '').trim() || `${prefix}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
@@ -87,12 +87,20 @@ async function listTurmas(db) {
 }
 
 async function saveAluno(env, aluno, queue = true) {
-  const idAluno = id('ALU', aluno.idAluno);
+  const cpf = String(aluno.cpf || '').replace(/\D/g, '');
+  const idRecebido = id('ALU', aluno.idAluno);
+  // Dados importados podem chegar com um ID diferente para um CPF que já existe
+  // no D1. Como CPF é único, reutilizamos o cadastro existente em vez de tentar
+  // inserir uma segunda pessoa e disparar SQLITE_CONSTRAINT_UNIQUE.
+  const existente = cpf
+    ? await env.DB.prepare('SELECT id_aluno FROM alunos WHERE cpf = ? LIMIT 1').bind(cpf).first()
+    : null;
+  const idAluno = existente?.id_aluno || idRecebido;
   const record = { ...aluno, idAluno };
   await env.DB.prepare(`INSERT INTO alunos (id_aluno, cpf, nome_completo, telefone_aluno, dados_json)
     VALUES (?, ?, ?, ?, ?) ON CONFLICT(id_aluno) DO UPDATE SET cpf=excluded.cpf, nome_completo=excluded.nome_completo,
     telefone_aluno=excluded.telefone_aluno, dados_json=excluded.dados_json, updated_at=CURRENT_TIMESTAMP`)
-    .bind(idAluno, String(record.cpf || '').replace(/\D/g, ''), record.nomeCompleto, record.telefoneAluno || '', JSON.stringify(record)).run();
+    .bind(idAluno, cpf, record.nomeCompleto, record.telefoneAluno || '', JSON.stringify(record)).run();
   if (queue) await enqueue(env.DB, 'aluno', idAluno, 'salvar', { action: 'salvarAluno', body: { aluno: record } });
   return record;
 }

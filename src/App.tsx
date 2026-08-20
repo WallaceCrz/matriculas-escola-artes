@@ -17,7 +17,6 @@ import { uiFeedback } from './services/uiFeedback';
 import { MenuInicial, TelaApp } from './components/MenuInicial';
 import { TurmasPage } from './components/TurmasPage';
 import { ConsultaAlunos } from './components/ConsultaAlunos';
-import { FrequenciaEmProgresso } from './components/FrequenciaEmProgresso';
 import { FichaAluno } from './components/FichaAluno';
 import { MenuLateral } from './components/MenuLateral';
 import { ArrowLeft } from 'lucide-react';
@@ -54,6 +53,8 @@ const ALUNO_INITIAL_STATE: Aluno = {
   fotoUrl: '',
   responsavel: '',
   responsavelCadastro: '',
+  situacao: 'Ativo',
+  observacoes: '',
 };
 
 const MATRICULA_INITIAL_STATE: Matricula = {
@@ -184,6 +185,15 @@ export default function App() {
     } catch (err) { uiFeedback.notify(err instanceof Error ? err.message : 'Erro ao salvar aluno.', 'error'); } finally { setSalvando(false); uiFeedback.hideProgress(); }
   };
 
+  const handleSalvarAlunoNaFicha = async (alunoAtualizado: Aluno): Promise<Aluno> => {
+    const res = await apiService.salvarAlunoSomente(alunoAtualizado);
+    const salvo = await apiService.obterAlunoAtualizado(res.idAluno, alunoAtualizado.cpf) || { ...alunoAtualizado, idAluno: res.idAluno };
+    setAluno((atual) => atual.idAluno === salvo.idAluno ? salvo : atual);
+    setAlunoEmFicha((atual) => atual?.idAluno === salvo.idAluno ? salvo : atual);
+    uiFeedback.notify('Situação e observações atualizadas.', 'success');
+    return salvo;
+  };
+
   const handleNovaMatriculaGlobal = () => {
     setCpf('');
     setAluno(ALUNO_INITIAL_STATE);
@@ -220,9 +230,8 @@ export default function App() {
       <main className="flex-1 min-w-0 px-4 py-6">
         {modoVisualizacao !== 'inicio' && <div className="max-w-7xl mx-auto mb-4"><button type="button" onClick={handleVoltarGlobal} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50"><ArrowLeft className="w-4 h-4"/>Voltar</button></div>}
         {modoVisualizacao === 'inicio' ? <MenuInicial sessao={sessao} onAbrir={setModoVisualizacao}/>
-        : modoVisualizacao === 'turmas' ? <TurmasPage sessao={sessao} onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula}/>
+        : modoVisualizacao === 'turmas' ? <TurmasPage sessao={sessao} onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula} onSalvarAluno={handleSalvarAlunoNaFicha}/>
         : modoVisualizacao === 'consulta' ? <ConsultaAlunos onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onCadastrarNovo={handleCadastrarNovoConsulta} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula}/>
-        : modoVisualizacao === 'frequencia' ? <FrequenciaEmProgresso/>
         : modoVisualizacao === 'configuracoes' ? (
           sessao.admin ? <PainelAdmin modo="admin" onExibirAluno={setAlunoEmFicha}/> : <div className="max-w-xl mx-auto bg-rose-50 border border-rose-200 rounded-xl p-6 text-rose-800 font-bold">Acesso restrito ao administrador.</div>
         ) : (
@@ -292,7 +301,7 @@ export default function App() {
         onClose={() => setModalConfigAberto(false)}
         onStatusChange={(conectado) => setAppsScriptConectado(conectado)}
       />
-      {alunoEmFicha && <FichaAluno aluno={alunoEmFicha} matriculas={getStoredMatriculas().filter(m=>m.idAluno===alunoEmFicha.idAluno)} onFechar={()=>setAlunoEmFicha(null)} onEditar={()=>handleEditarAluno(alunoEmFicha)} onMatricular={()=>handleAdicionarMatricula(alunoEmFicha)} onExcluir={()=>handleExcluirAluno(alunoEmFicha)} onEditarMatricula={m=>handleEditarMatricula(alunoEmFicha,m)} onExcluirMatricula={handleExcluirMatricula}/>}
+      {alunoEmFicha && <FichaAluno aluno={alunoEmFicha} matriculas={getStoredMatriculas().filter(m=>m.idAluno===alunoEmFicha.idAluno)} onFechar={()=>setAlunoEmFicha(null)} onEditar={()=>handleEditarAluno(alunoEmFicha)} onMatricular={()=>handleAdicionarMatricula(alunoEmFicha)} onExcluir={()=>handleExcluirAluno(alunoEmFicha)} onEditarMatricula={m=>handleEditarMatricula(alunoEmFicha,m)} onExcluirMatricula={handleExcluirMatricula} onSalvarAluno={handleSalvarAlunoNaFicha}/>}
     </div>
   );
 }

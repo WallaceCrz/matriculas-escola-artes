@@ -26,5 +26,8 @@
     "types": [
       "vite/client"
     ]
-  }
+  },
+  "exclude": [
+    "vite-plugins/pdfLayout.saved.ts"
+  ]
 }

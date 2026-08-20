@@ -22,4 +22,4 @@ wrangler d1 execute <BANCO_PREVIEW> --remote --file import.sql
 
 Os arquivos de origem e o SQL gerado contêm dados pessoais e não devem ser versionados. Depois da importação, confira as contagens diretamente no D1 antes de habilitar qualquer leitura ou gravação do aplicativo.
 
-O aplicativo atual continua usando a planilha até essas etapas serem concluídas. Isso evita perda ou criação de um banco parcial durante o preview.
+Com a migração concluída, o aplicativo usa o D1 como fonte principal. A planilha permanece como cópia de segurança, atualizada pela fila `planilha_outbox`.

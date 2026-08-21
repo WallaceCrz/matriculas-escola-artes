@@ -47,7 +47,7 @@ O sistema fornece nove turmas iniciais: Música Manhã/Tarde/Noite, Teatro Manh�
 
 Turmas e perfis de usuário são mantidos no D1 e sincronizados com a planilha pelo `Code.gs` publicado.
 
-Na ficha do aluno, a situação (`Ativo`, `Inativo` ou `Cancelado`) e as observações podem ser atualizadas diretamente. A página de Turmas também exporta um arquivo `.xlsx` no formato do formulário institucional, criando uma aba por turma e incluindo somente os alunos adicionados à respectiva turma.
+Na ficha do aluno, a situação (`Ativo`, `Inativo` ou `Cancelado`) e as observações podem ser atualizadas diretamente. A página de Turmas exporta um arquivo `.xlsx` com as 39 colunas do modelo de importação Bússola v2.0.0, criando uma aba por turma e incluindo somente os alunos adicionados à respectiva turma. `ID` e `Número de matrícula` ficam vazios, as colunas de responsável e saída são preenchidas apenas para menores de 18 anos, e `Marcadores` recebe o projeto (`Música` ou `Teatro`). No celular, a turma selecionada substitui a lista e oferece um botão para voltar às turmas.
 
 ## Desenvolvimento
 

@@ -227,7 +227,7 @@ export default function App() {
 
       <div className="flex flex-1 min-h-0">
       <MenuLateral sessao={sessao} atual={modoVisualizacao} onAbrir={setModoVisualizacao}/>
-      <main className="flex-1 min-w-0 px-4 py-6">
+      <main className="flex-1 min-w-0 px-3 sm:px-4 py-3 sm:py-6 overflow-x-hidden">
         {modoVisualizacao !== 'inicio' && <div className="max-w-7xl mx-auto mb-4"><button type="button" onClick={handleVoltarGlobal} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-bold shadow-sm hover:bg-slate-50"><ArrowLeft className="w-4 h-4"/>Voltar</button></div>}
         {modoVisualizacao === 'inicio' ? <MenuInicial sessao={sessao} onAbrir={setModoVisualizacao}/>
         : modoVisualizacao === 'turmas' ? <TurmasPage sessao={sessao} onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula} onSalvarAluno={handleSalvarAlunoNaFicha}/>

@@ -1,45 +1,56 @@
 import { Aluno, Matricula, Turma } from '../types';
 
-export const CABECALHOS_INSCRICOES = [
-  'ID','Hora de início','Hora de conclusão','Email','Nome',
-  'Autorização de Utilização de Dados. (Este consentimento serve para atender aos requisitos da Lei nº 13.709/18 (Lei Geral de Proteção de Dados). Autorizo que os meus dados pessoais e sensíveis contidos neste formulário sejam utilizados para fins de inscrição e matrícula.)',
-  'Nome completo sem abreviações (Nome do candidato a inscrição, não do responsável)','Gênero','Data de nascimento (Formato: dd/mm/aaaa)','Estado Civil','Naturalidade\n','Possui Responsável Legal?','Pode sair sozinho(a) da Intituição','Nome da mãe','Nome do pai','CEP','Município','Bairro','Logradouro (Rua)','Número','Complemento','Referência','E-mail','Telefone do Responsável (Mãe)','Telefone do Responsável (Pai)','RG (do estudante)','CPF (do estudante)','Possui certidão de nascimento?','Possui certidão de reservista?','Possui carteira de trabalho?','Em caso de efetivação da matrícula, você utilizará transporte do instituto?','Situação escolar','Grau de escolaridade (do estudante)','Turno (em que o estudante frequenta a escola)','Unidade de ensino (escola em que estuda)','Instituição','Renda','Quantas pessoas moram com você?(resposta em número. Ex: 2)','Recebe algum auxílio governamental?','Raça','Tem parentesco com algum funcionário da Moura?','Nome do funcionário e setor (Exemplo: José, produção)','Pessoa com deficiência','Qual deficiência?','Em qual projeto deseja se inscrever?','Qual o ano escolar que você está matriculado:','Qual o ano escolar que você está matriculado:2','Teria disponibilidade para participar de qual turma e horários disponíveis abaixo:\n','Teria disponibilidade para participar de qual turma e horários disponíveis abaixo:\n2','Você está ciente dos critérios de seleção e da apresentação da documentação que está sendo solicitada acima?','Para qual curso está fazendo a inscrição?','Turmas','Turmas2','Já participou de turmas anteriores de musicalização ou teatro?','Disponibilidade para o curso:','Já possui alguma experiência com desmontar coisas, ver como funciona ou programação?','Temos várias pessoas interessadas em participar do curso, por que você quer participar?','É a primeira vez que tenta participar da robótica? Já participou de alguma outra atividade nossa? Se sim, qual?','Em qual curso deseja se inscrever?','Já possui alguma experiência com desmontar coisas, ver como funciona ou programação?2','Temos várias pessoas interessadas em participar do curso, por que você quer participar?2','É a primeira vez que tenta participar da robótica? Já participou de alguma outra atividade nossa? Se sim, qual?2','Para finalizar, me conta como conheceu os nossos projetos?'
+export const CABECALHOS_BUSSOLA = [
+  'ID','Nome','Gênero','Data de Nascimento','Estado Civil','Religião','Naturalidade','Possui responsável legal?','Pode sair sozinha da instituição','Nome da mãe','Nome do pai','Número de matrícula','Data de entrada','CEP','Estado ','Municipio','Bairro ','Logradouro','Número','Complemento','Referência','E-mail','Telefone 1 ','Telefone 2 ','RG ','CPF','Possui certidão de nascimento','Possui certidão de reservista','Possui carteira de trabalho','Marcadores','Grau de escolaridade','Situação Escolar','Turno','Unidade de Ensino','Tipo de Unidade de Ensino','Bolsa de estudo','Status do Atendido','Data de desligamento','Motivo de desligamento',
 ] as const;
 
 const simNao = (valor: boolean | null | undefined) => valor === true ? 'Sim' : valor === false ? 'Não' : '';
 
-function linhaAluno(aluno: Aluno, matricula: Matricula | undefined, turma: Turma): string[] {
-  const linha = new Array<string>(CABECALHOS_INSCRICOES.length).fill('');
-  linha[0] = aluno.idAluno;
-  linha[6] = aluno.nomeCompleto;
-  linha[7] = aluno.genero;
-  linha[8] = aluno.dataNascimento;
-  linha[10] = aluno.naturalidade;
-  linha[11] = aluno.responsavel ? 'Sim' : '';
-  linha[12] = simNao(matricula?.podeSairSozinho);
-  linha[13] = aluno.nomeMae;
-  linha[14] = aluno.nomePai;
-  linha[15] = aluno.cep;
-  linha[16] = aluno.cidade;
-  linha[17] = aluno.bairro;
-  linha[18] = aluno.enderecoRua;
-  linha[19] = aluno.numero;
-  linha[23] = aluno.telefoneMae;
-  linha[24] = aluno.telefonePai;
-  linha[25] = aluno.rg;
-  linha[26] = aluno.cpf;
-  linha[30] = simNao(matricula?.utilizaraTransporte);
-  linha[32] = aluno.serie;
-  linha[34] = aluno.escolaEstuda;
-  linha[39] = aluno.corEtnia;
-  linha[42] = simNao(aluno.pcd);
-  linha[43] = aluno.descricaoPcd;
-  linha[44] = turma.curso;
-  linha[45] = aluno.serie;
-  linha[47] = turma.nome;
-  linha[50] = turma.curso;
-  linha[51] = turma.nome;
-  linha[54] = turma.horario;
+function idadeNaData(dataNascimento: string): number | null {
+  const partes = dataNascimento.trim().split(/[\/-]/).map(Number);
+  if (partes.length !== 3 || partes.some(Number.isNaN)) return null;
+  const [a, b, c] = partes;
+  const ano = a > 31 ? a : c;
+  const mes = b;
+  const dia = a > 31 ? c : a;
+  const hoje = new Date();
+  let idade = hoje.getFullYear() - ano;
+  if (hoje.getMonth() + 1 < mes || (hoje.getMonth() + 1 === mes && hoje.getDate() < dia)) idade--;
+  return idade >= 0 && idade < 130 ? idade : null;
+}
+
+function ehMenor(aluno: Aluno): boolean {
+  return (idadeNaData(aluno.dataNascimento) ?? aluno.idade) < 18;
+}
+
+export function montarLinhaBussola(aluno: Aluno, matricula: Matricula | undefined, turma: Turma): string[] {
+  const linha = new Array<string>(CABECALHOS_BUSSOLA.length).fill('');
+  const menor = ehMenor(aluno);
+  // ID e número de matrícula permanecem vazios para serem gerados pelo Bússola.
+  linha[1] = aluno.nomeCompleto;
+  linha[2] = aluno.genero;
+  linha[3] = aluno.dataNascimento;
+  linha[6] = aluno.naturalidade;
+  linha[7] = menor ? (aluno.responsavel ? 'Sim' : 'Não') : '';
+  linha[8] = menor ? simNao(matricula?.podeSairSozinho) : '';
+  linha[9] = aluno.nomeMae;
+  linha[10] = aluno.nomePai;
+  linha[12] = matricula?.dataMatricula || '';
+  linha[13] = aluno.cep;
+  linha[15] = aluno.cidade;
+  linha[16] = aluno.bairro;
+  linha[17] = aluno.enderecoRua;
+  linha[18] = aluno.numero;
+  linha[22] = aluno.telefoneAluno || aluno.telefoneMae;
+  linha[23] = aluno.telefonePai || aluno.telefoneMae;
+  linha[24] = aluno.rg;
+  linha[25] = aluno.cpf;
+  linha[29] = turma.curso;
+  linha[30] = aluno.serie;
+  linha[32] = turma.horario;
+  linha[33] = aluno.escolaEstuda;
+  linha[36] = aluno.situacao || 'Ativo';
+  if (aluno.situacao === 'Cancelado' || aluno.situacao === 'Inativo') linha[38] = aluno.observacoes || '';
   return linha;
 }
 
@@ -65,28 +76,29 @@ export async function exportarTurmasExcel(turmas: Turma[], alunos: Aluno[], matr
     const membros = turma.alunosIds.map((idAluno) => alunosPorId.get(idAluno)).filter((aluno): aluno is Aluno => !!aluno);
     const linhas = membros.map((aluno) => {
       const matricula = matriculas.find((item) => item.idAluno === aluno.idAluno && item.curso === turma.curso && item.horario === turma.horario && item.anoSemestre === turma.anoSemestre);
-      return linhaAluno(aluno, matricula, turma);
+      return montarLinhaBussola(aluno, matricula, turma);
     });
-    const sheet = XLSX.utils.aoa_to_sheet([CABECALHOS_INSCRICOES as unknown as string[], ...linhas]);
-    sheet['!autofilter'] = { ref: `A1:BK${Math.max(1, linhas.length + 1)}` };
+    const sheet = XLSX.utils.aoa_to_sheet([CABECALHOS_BUSSOLA as unknown as string[], ...linhas]);
+    const ultimaColuna = XLSX.utils.encode_col(CABECALHOS_BUSSOLA.length - 1);
+    sheet['!autofilter'] = { ref: `A1:${ultimaColuna}${Math.max(1, linhas.length + 1)}` };
     sheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
-    sheet['!cols'] = CABECALHOS_INSCRICOES.map((cabecalho, indice) => ({ wch: indice === 6 ? 34 : Math.min(30, Math.max(13, cabecalho.length * 0.45)) }));
-    sheet['!rows'] = [{ hpt: 42 }, ...linhas.map(() => ({ hpt: 24 }))];
+    sheet['!cols'] = CABECALHOS_BUSSOLA.map((cabecalho, indice) => ({ wch: indice === 1 ? 34 : Math.min(28, Math.max(12, cabecalho.length + 2)) }));
+    sheet['!rows'] = [{ hpt: 25 }, ...linhas.map(() => ({ hpt: 22 }))];
 
-    for (let coluna = 0; coluna < CABECALHOS_INSCRICOES.length; coluna++) {
+    for (let coluna = 0; coluna < CABECALHOS_BUSSOLA.length; coluna++) {
       const celula = sheet[XLSX.utils.encode_cell({ r: 0, c: coluna })];
-      if (celula) celula.s = { fill: { fgColor: { rgb: '5B9BD5' } }, font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: { bottom: { style: 'thin', color: { rgb: 'D9EAF7' } } } };
+      if (celula) celula.s = { fill: { fgColor: { rgb: '000000' } }, font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 12 }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: { style: 'thin', color: { rgb: '000000' } }, bottom: { style: 'thin', color: { rgb: '000000' } }, left: { style: 'thin', color: { rgb: '000000' } }, right: { style: 'thin', color: { rgb: '000000' } } } };
     }
     for (let linha = 1; linha <= linhas.length; linha++) {
-      for (let coluna = 0; coluna < CABECALHOS_INSCRICOES.length; coluna++) {
+      for (let coluna = 0; coluna < CABECALHOS_BUSSOLA.length; coluna++) {
         const celula = sheet[XLSX.utils.encode_cell({ r: linha, c: coluna })];
-        if (celula) celula.s = { fill: { fgColor: { rgb: linha % 2 ? 'DDEBF7' : 'FFFFFF' } }, font: { color: { rgb: '1F2937' }, sz: 10 }, alignment: { vertical: 'center' }, border: { bottom: { style: 'hair', color: { rgb: 'B4C7E7' } } } };
+        if (celula) celula.s = { font: { color: { rgb: '000000' }, sz: 11 }, alignment: { vertical: 'center' }, border: { bottom: { style: 'hair', color: { rgb: 'D9D9D9' } } } };
       }
     }
     XLSX.utils.book_append_sheet(workbook, sheet, nomeAba(turma.nome, nomesUsados));
   }
 
-  if (!workbook.SheetNames.length) XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([CABECALHOS_INSCRICOES as unknown as string[]]), 'Turmas');
+  if (!workbook.SheetNames.length) XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([CABECALHOS_BUSSOLA as unknown as string[]]), 'Turmas');
   const data = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(workbook, `turmas_escola_artes_${data}.xlsx`, { compression: true });
+  XLSX.writeFile(workbook, `importacao_bussola_turmas_${data}.xlsx`, { compression: true });
 }

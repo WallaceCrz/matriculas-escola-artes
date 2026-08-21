@@ -189,7 +189,7 @@ export default function App() {
     const res = await apiService.salvarAlunoSomente(alunoAtualizado);
     const salvo = await apiService.obterAlunoAtualizado(res.idAluno, alunoAtualizado.cpf) || { ...alunoAtualizado, idAluno: res.idAluno };
     setAluno((atual) => atual.idAluno === salvo.idAluno ? salvo : atual);
-    setAlunoEmFicha((atual) => atual?.idAluno === salvo.idAluno ? salvo : atual);
+    setAlunoEmFicha(null);
     uiFeedback.notify('Situação e observações atualizadas.', 'success');
     return salvo;
   };

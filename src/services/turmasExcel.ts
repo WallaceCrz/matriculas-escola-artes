@@ -49,7 +49,7 @@ export function montarLinhaBussola(aluno: Aluno, matricula: Matricula | undefine
   linha[30] = aluno.serie;
   linha[32] = turma.horario;
   linha[33] = aluno.escolaEstuda;
-  linha[36] = aluno.situacao || 'Ativo';
+  linha[36] = aluno.situacao || '';
   if (aluno.situacao === 'Cancelado' || aluno.situacao === 'Inativo') linha[38] = aluno.observacoes || '';
   return linha;
 }

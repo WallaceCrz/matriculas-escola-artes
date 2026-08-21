@@ -43,6 +43,14 @@ const pick = (record: Record<string, unknown>, ...keys: string[]) => {
   return '';
 };
 
+export function normalizarSituacaoAluno(valor: unknown): Aluno['situacao'] | undefined {
+  const situacao = String(valor || '').trim().toLocaleLowerCase('pt-BR');
+  if (situacao === 'ativo') return 'Ativo';
+  if (situacao === 'inativo') return 'Inativo';
+  if (situacao === 'cancelado' || situacao === 'desistente' || situacao === 'abandono') return 'Cancelado';
+  return undefined;
+}
+
 function mapearAlunoBruto(raw: Record<string, unknown>, cpfFallback = ''): Aluno {
   const nascimento = dataParaBR(String(pick(raw, 'Data de Nascimento', 'dataNascimento')));
   return {
@@ -77,7 +85,9 @@ function mapearAlunoBruto(raw: Record<string, unknown>, cpfFallback = ''): Aluno
     fotoUrl: normalizarUrlFoto(String(pick(raw, 'Foto do aluno', 'fotoUrl'))),
     responsavel: String(pick(raw, 'Responsavel', 'responsavel')),
     responsavelCadastro: String(pick(raw, 'Responsavel pelo cadastro', 'responsavelCadastro')),
-    situacao: (String(pick(raw, 'Situação', 'Situacao', 'situacao')) || 'Ativo') as Aluno['situacao'],
+    // Não presumir "Ativo" quando bancos antigos ainda não possuem situação.
+    // Isso evita que abrir/salvar a ficha altere silenciosamente um estado legado.
+    situacao: normalizarSituacaoAluno(pick(raw, 'Situação', 'Situacao', 'situacao')),
     observacoes: String(pick(raw, 'Observações', 'Observacoes', 'observacoes')),
   };
 }

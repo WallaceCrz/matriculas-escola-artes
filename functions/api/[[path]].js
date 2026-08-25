@@ -60,12 +60,14 @@ async function flushOutbox(env) {
 
 async function listData(db) {
   const [alunos, matriculas] = await Promise.all([
-    db.prepare('SELECT dados_json FROM alunos ORDER BY nome_completo COLLATE NOCASE').all(),
-    db.prepare('SELECT dados_json FROM matriculas ORDER BY updated_at DESC').all(),
+    db.prepare('SELECT id_aluno, cpf, dados_json FROM alunos ORDER BY nome_completo COLLATE NOCASE').all(),
+    db.prepare('SELECT id_matricula, id_aluno, dados_json FROM matriculas ORDER BY updated_at DESC').all(),
   ]);
   return {
-    alunos: (alunos.results || []).map((row) => JSON.parse(row.dados_json)),
-    matriculas: (matriculas.results || []).map((row) => JSON.parse(row.dados_json)),
+    // As chaves relacionais do D1 são a fonte de verdade. Bancos importados
+    // podem conter IDs antigos dentro do JSON, o que fazia turmas desaparecerem.
+    alunos: (alunos.results || []).map((row) => ({ ...JSON.parse(row.dados_json), ID_ALUNO: row.id_aluno, idAluno: row.id_aluno, CPF: row.cpf, cpf: row.cpf })),
+    matriculas: (matriculas.results || []).map((row) => ({ ...JSON.parse(row.dados_json), ID_MATRICULA: row.id_matricula, idMatricula: row.id_matricula, ID_ALUNO: row.id_aluno, idAluno: row.id_aluno })),
   };
 }
 
@@ -93,7 +95,8 @@ async function saveAluno(env, aluno, queue = true) {
   // no D1. Como CPF é único, reutilizamos o cadastro existente em vez de tentar
   // inserir uma segunda pessoa e disparar SQLITE_CONSTRAINT_UNIQUE.
   const existente = cpf
-    ? await env.DB.prepare('SELECT id_aluno FROM alunos WHERE cpf = ? LIMIT 1').bind(cpf).first()
+    ? await env.DB.prepare(`SELECT id_aluno FROM alunos
+      WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(cpf,'.',''),'-',''),' ',''),'(',''),')','') = ? LIMIT 1`).bind(cpf).first()
     : null;
   const idAluno = existente?.id_aluno || idRecebido;
   const record = { ...aluno, idAluno };

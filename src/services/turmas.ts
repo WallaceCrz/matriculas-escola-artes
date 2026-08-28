@@ -3,9 +3,11 @@ import { Turma } from '../types';
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/${path}`, {
     ...init,
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
   });
   const result = await response.json();
+  if (response.status === 401) window.dispatchEvent(new CustomEvent('ea:session-expired'));
   if (!response.ok || !result.sucesso) throw new Error(result.mensagem || 'Não foi possível acessar as turmas.');
   return result;
 }
@@ -26,4 +28,11 @@ export async function salvarTurma(turma: Turma): Promise<{ turma: Turma; compart
 export async function removerTurma(idTurma: string): Promise<boolean> {
   await request(`turmas/${encodeURIComponent(idTurma)}`, { method: 'DELETE' });
   return true;
+}
+
+export async function alterarMembrosTurma(idTurma: string, acao: 'adicionar' | 'remover', alunosIds: string[]): Promise<Turma> {
+  const result = await request<{ turma: Turma }>(`turmas/${encodeURIComponent(idTurma)}/membros`, {
+    method: 'PATCH', body: JSON.stringify({ acao, alunosIds }),
+  });
+  return result.turma;
 }

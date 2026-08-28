@@ -1,4 +1,4 @@
-const APP_VERSION = 'EA_APP_2026_08_20_01';
+const APP_VERSION = 'EA_APP_2026_08_28_01';
 const ABA_ALUNOS = 'ALUNOS';
 const ABA_MATRICULAS = 'MATRICULAS';
 const ABA_EXCLUIDOS = 'EXCLUIDOS';
@@ -12,6 +12,7 @@ function doGet(e) {
   try {
     garantirEstrutura();
     if (action === 'ping' || action === 'versao') return json({ sucesso: true, versao: APP_VERSION });
+    validarSegredo(p.apiSecret);
     if (action === 'buscarAluno') return buscarAluno(p.termo || p.cpf || '');
     if (action === 'listarTodos') return listarTodos();
     if (action === 'listarLogins') return listarLogins();
@@ -41,6 +42,7 @@ function doPost(e) {
 
     // Login precisa continuar funcionando mesmo durante atualização do frontend.
     if (action === 'autenticarLogin') return autenticarLogin(body.login, body.senha);
+    validarSegredo(body.apiSecret);
     validarVersao(body.clientVersion);
 
     if (action === 'salvarAlunoEMatricula') return salvarAlunoEMatricula(body.aluno || {}, body.matricula || {});
@@ -58,6 +60,12 @@ function doPost(e) {
   } catch (err) {
     return json({ sucesso: false, mensagem: String(err), versao: APP_VERSION });
   }
+}
+
+function validarSegredo(recebido) {
+  const esperado = PropertiesService.getScriptProperties().getProperty('API_SECRET');
+  if (!esperado) throw new Error('API_SECRET ainda não foi configurado nas propriedades do Apps Script.');
+  if (String(recebido || '') !== String(esperado)) throw new Error('Acesso não autorizado.');
 }
 
 function validarVersao(clientVersion) {

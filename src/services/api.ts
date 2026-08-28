@@ -2,7 +2,7 @@ import { Aluno, Matricula } from '../types';
 import { CONFIG } from '../config';
 import { limpaCPF, calcularIdade, dataParaBR } from '../utils/cpfUtils';
 
-export const APP_SCRIPT_VERSION = 'EA_APP_2026_08_20_01';
+export const APP_SCRIPT_VERSION = 'EA_APP_2026_08_28_01';
 const API_BASE = '/api';
 const CACHE_TTL_MS = 120_000;
 const fotoDataUrlCache = new Map<string, string>();
@@ -128,9 +128,11 @@ export function saveStoredMatriculas(matriculas: Matricula[]): void { cacheMatri
 async function api<T = any>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}/${path}`, {
     ...init,
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
   });
   const result = await response.json() as T & { sucesso?: boolean; mensagem?: string };
+  if (response.status === 401) window.dispatchEvent(new CustomEvent('ea:session-expired'));
   if (!response.ok || result.sucesso === false) throw new Error(result.mensagem || `Falha HTTP ${response.status}.`);
   return result;
 }

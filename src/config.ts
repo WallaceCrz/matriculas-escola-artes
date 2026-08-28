@@ -6,8 +6,4 @@ export const CONFIG = {
 
   // Única fonte da URL do Web App. Atualize este valor após implantar o Apps Script.
   DEFAULT_APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwEE6hWFbYorn_o9Zyo1_uczxi9uGGX-lJ-aqMAdw5ST1giGSYBuz8-SDM5knikbxpgcw/exec',
-
-  // Administrador local, mantido no código conforme solicitado.
-  ADMIN_LOGIN: 'admin',
-  ADMIN_PASSWORD: 'admin321',
 } as const;

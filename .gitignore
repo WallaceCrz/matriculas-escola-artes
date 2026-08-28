@@ -16,4 +16,5 @@ Thumbs.db
 coverage/
 *.tmp
 *.bak
+database/backup-*.sql
 .work/

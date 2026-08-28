@@ -11,7 +11,7 @@ import { ModalAppsScript } from './components/ModalAppsScript';
 import { apiService, getStoredMatriculas } from './services/api';
 import { CONFIG } from './config';
 import { Login } from './components/Login';
-import { obterSessao, sair, SessaoUsuario } from './services/auth';
+import { obterSessao, sair, SessaoUsuario, validarSessaoAtual } from './services/auth';
 import { GlobalFeedback } from './components/GlobalFeedback';
 import { uiFeedback } from './services/uiFeedback';
 import { MenuInicial, TelaApp } from './components/MenuInicial';
@@ -92,6 +92,14 @@ export default function App() {
       .then((status) => setAppsScriptConectado(status.conectado && status.atualizado))
       .catch(() => setAppsScriptConectado(false));
   }, []);
+
+  useEffect(() => {
+    if (!sessao) return;
+    void validarSessaoAtual().then((atual) => setSessao(atual));
+    const expirada = () => { sair(); setSessao(null); setModoVisualizacao('inicio'); };
+    window.addEventListener('ea:session-expired', expirada);
+    return () => window.removeEventListener('ea:session-expired', expirada);
+  }, [sessao?.login]);
 
   useEffect(() => apiService.iniciarBackupAutomatico(), []);
 

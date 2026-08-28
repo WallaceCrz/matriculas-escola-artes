@@ -6,7 +6,7 @@ Aplicativo React + Vite para cadastro de alunos e matrículas. O Cloudflare D1 �
 
 - Cadastro, edição e exclusão de alunos e matrículas no D1, com sincronização da planilha em segundo plano.
 - Fotos armazenadas no Google Drive; a planilha guarda somente o link.
-- Login administrativo local e usuários comuns na aba `LOGINS`.
+- Login validado no servidor, com sessão segura em cookie `HttpOnly`; usuários comuns permanecem na aba `LOGINS`.
 - PDF com layout oficial em `src/services/pdfLayout.saved.ts`.
 - Abertura do PDF em nova guia e impressão direta.
 - Notificações visuais no lugar de `alert()`.
@@ -28,15 +28,17 @@ O Apps Script cria e mantém estas abas:
 
 ## Configuração
 
-1. Defina a URL publicada do Apps Script em `src/config.ts`.
-2. Substitua o código do Apps Script pelo arquivo `Code.gs` deste projeto.
-3. Publique uma nova versão do Web App.
-4. Autorize acesso à Planilha, Drive e serviço de exportação quando solicitado.
+1. Defina a URL publicada do Apps Script em `src/config.ts` e no segredo `APPS_SCRIPT_URL` do Cloudflare Pages.
+2. Crie um valor secreto forte e configure o mesmo valor como `APPS_SCRIPT_SECRET` no Cloudflare Pages e `API_SECRET` nas propriedades do Apps Script.
+3. Configure `ADMIN_LOGIN` e `ADMIN_PASSWORD` como segredos do Cloudflare Pages. A senha administrativa não deve voltar para o código-fonte.
+4. Substitua o código do Apps Script pelo arquivo `Code.gs` deste projeto.
+5. Publique uma nova versão do Web App e autorize Planilha, Drive e exportação quando solicitado.
+6. Aplique as migrações pendentes do diretório `database/migrations` no D1 antes de publicar o frontend.
 
 A versão obrigatória do Apps Script é:
 
 ```text
-EA_APP_2026_08_20_01
+EA_APP_2026_08_28_01
 ```
 
 ## Painel inicial, professores e turmas

@@ -92,6 +92,7 @@ const MATRICULA_AMOSTRA: Matricula = {
   podeSairSozinho: true,
   utilizaraTransporte: false,
   anoSemestre: '2026.2',
+  situacao: 'Ativo',
 };
 
 interface PainelAdminProps { modo?: 'admin' | 'alunos'; sessao?: SessaoUsuario; onEditarAluno?: (aluno: Aluno) => void; onAdicionarMatricula?: (aluno: Aluno) => void; onExibirAluno?: (aluno: Aluno) => void; }
@@ -238,6 +239,7 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
         podeSairSozinho: true,
         utilizaraTransporte: false,
         anoSemestre: '2026.2',
+        situacao: 'Ativo',
       };
       novasMatriculas.push(mat);
     }

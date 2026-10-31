@@ -49,8 +49,8 @@ export function montarLinhaBussola(aluno: Aluno, matricula: Matricula | undefine
   linha[30] = aluno.serie;
   linha[32] = turma.horario;
   linha[33] = aluno.escolaEstuda;
-  linha[36] = aluno.situacao || '';
-  if (aluno.situacao === 'Cancelado' || aluno.situacao === 'Inativo') linha[38] = aluno.observacoes || '';
+  linha[36] = matricula?.situacao || aluno.situacao || '';
+  if (matricula?.situacao === 'Cancelado' || matricula?.situacao === 'Inativo') linha[38] = aluno.observacoes || '';
   return linha;
 }
 
@@ -73,10 +73,10 @@ export async function exportarTurmasExcel(turmas: Turma[], alunos: Aluno[], matr
   const nomesUsados = new Set<string>();
 
   for (const turma of turmas.filter((item) => item.ativa !== false)) {
-    const membros = turma.alunosIds.map((idAluno) => alunosPorId.get(idAluno)).filter((aluno): aluno is Aluno => !!aluno);
-    const linhas = membros.map((aluno) => {
-      const matricula = matriculas.find((item) => item.idAluno === aluno.idAluno && item.curso === turma.curso && item.horario === turma.horario && item.anoSemestre === turma.anoSemestre);
-      return montarLinhaBussola(aluno, matricula, turma);
+    const linhas = turma.alunosIds.flatMap((idAluno) => {
+      const aluno = alunosPorId.get(idAluno);
+      const matricula = matriculas.find((item) => item.idAluno === idAluno && item.anoSemestre === turma.anoSemestre && (item.turma ? item.turma === turma.nome : item.curso === turma.curso && item.horario === turma.horario));
+      return aluno && matricula?.situacao === 'Ativo' ? [montarLinhaBussola(aluno, matricula, turma)] : [];
     });
     const sheet = XLSX.utils.aoa_to_sheet([CABECALHOS_BUSSOLA as unknown as string[], ...linhas]);
     const ultimaColuna = XLSX.utils.encode_col(CABECALHOS_BUSSOLA.length - 1);

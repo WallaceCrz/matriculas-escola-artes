@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Check, Copy, FileText, MapPin, Pencil, Printer, Save, Trash2, UserPlus, UserRound, X } from 'lucide-react';
 import { Aluno, Matricula } from '../types';
 import { gerarPDFMatricula } from '../services/pdfGenerator';
@@ -12,6 +12,7 @@ interface Props {
   onMatricular?: () => void;
   onEditarMatricula?: (matricula: Matricula) => void;
   onExcluirMatricula?: (matricula: Matricula) => void | Promise<void>;
+  onSalvarMatricula?: (matricula: Matricula) => Promise<Matricula | void>;
   onSalvarAluno?: (aluno: Aluno) => Promise<Aluno | void>;
 }
 
@@ -22,14 +23,21 @@ const coresSituacao: Record<string, string> = {
   '': 'border-amber-300 bg-amber-50 text-amber-800',
 };
 
-export const FichaAluno: React.FC<Props> = ({ aluno, matriculas, onFechar, onEditar, onExcluir, onMatricular, onEditarMatricula, onExcluirMatricula, onSalvarAluno }) => {
+export const FichaAluno: React.FC<Props> = ({ aluno, matriculas, onFechar, onEditar, onExcluir, onMatricular, onEditarMatricula, onExcluirMatricula, onSalvarMatricula, onSalvarAluno }) => {
   const [gerando, setGerando] = useState('');
   const [telefoneCopiado, setTelefoneCopiado] = useState('');
-  const [situacao, setSituacao] = useState<Aluno['situacao'] | ''>(aluno.situacao || '');
+  const [situacoesMatriculas, setSituacoesMatriculas] = useState<Record<string, Matricula['situacao']>>(() => Object.fromEntries(matriculas.map((matricula) => [matricula.idMatricula, matricula.situacao])));
   const [observacoes, setObservacoes] = useState(aluno.observacoes || '');
   const [salvandoFicha, setSalvandoFicha] = useState(false);
   const [salvoFicha, setSalvoFicha] = useState(false);
   const [erroFicha, setErroFicha] = useState('');
+  const [salvandoMatricula, setSalvandoMatricula] = useState('');
+  const situacao = useMemo<Aluno['situacao']>(() => {
+    const situacoes = matriculas.map((matricula) => situacoesMatriculas[matricula.idMatricula] || matricula.situacao);
+    if (situacoes.includes('Ativo')) return 'Ativo';
+    if (situacoes.includes('Inativo')) return 'Inativo';
+    return situacoes.length ? 'Cancelado' : 'Inativo';
+  }, [matriculas, situacoesMatriculas]);
 
   const abrirPdf = async (matricula: Matricula, imprimir = false) => {
     setGerando(matricula.idMatricula);
@@ -60,10 +68,6 @@ export const FichaAluno: React.FC<Props> = ({ aluno, matriculas, onFechar, onEdi
 
   const salvarFicha = async () => {
     if (!onSalvarAluno) return;
-    if (!situacao) {
-      setErroFicha('Selecione a situação correta antes de salvar. Nenhum valor foi alterado.');
-      return;
-    }
     setSalvandoFicha(true);
     setSalvoFicha(false);
     setErroFicha('');
@@ -74,6 +78,20 @@ export const FichaAluno: React.FC<Props> = ({ aluno, matriculas, onFechar, onEdi
     } catch (erro) {
       setErroFicha(erro instanceof Error ? erro.message : 'Não foi possível salvar a ficha.');
     } finally { setSalvandoFicha(false); }
+  };
+
+  const salvarSituacaoMatricula = async (matricula: Matricula, novaSituacao: Matricula['situacao']) => {
+    if (!onSalvarMatricula) return;
+    setSalvandoMatricula(matricula.idMatricula);
+    setErroFicha('');
+    try {
+      const atualizada = await onSalvarMatricula({ ...matricula, situacao: novaSituacao });
+      setSituacoesMatriculas((atuais) => ({ ...atuais, [matricula.idMatricula]: atualizada ? atualizada.situacao : novaSituacao }));
+    } catch (erro) {
+      setErroFicha(erro instanceof Error ? erro.message : 'Não foi possível atualizar a situação da matrícula.');
+    } finally {
+      setSalvandoMatricula('');
+    }
   };
 
   const campos = [
@@ -93,8 +111,8 @@ export const FichaAluno: React.FC<Props> = ({ aluno, matriculas, onFechar, onEdi
       <div className="p-4 sm:p-5 md:p-8 space-y-6 sm:space-y-8">
         <div className="grid sm:flex sm:flex-wrap gap-2"><button onClick={onEditar} disabled={!onEditar} className="justify-center px-4 py-2 rounded-xl bg-sky-50 text-sky-800 font-bold flex gap-2 disabled:hidden"><Pencil className="w-4 h-4"/>Editar aluno</button><button onClick={onMatricular} disabled={!onMatricular} className="justify-center px-4 py-2 rounded-xl bg-emerald-50 text-emerald-800 font-bold flex gap-2 disabled:hidden"><UserPlus className="w-4 h-4"/>Matricular</button><button onClick={onExcluir} disabled={!onExcluir} className="justify-center px-4 py-2 rounded-xl bg-rose-50 text-rose-700 font-bold flex gap-2 disabled:hidden"><Trash2 className="w-4 h-4"/>Excluir aluno</button></div>
         <div className="grid md:grid-cols-[180px_1fr] gap-6"><div className="w-36 sm:w-44 md:w-auto aspect-[3/4] mx-auto md:mx-0 rounded-2xl bg-slate-100 border overflow-hidden flex items-center justify-center">{aluno.fotoUrl ? <img src={aluno.fotoUrl} alt={aluno.nomeCompleto} className="w-full h-full object-cover"/> : <UserRound className="w-16 h-16 text-slate-300"/>}</div><div><h3 className="font-extrabold mb-3">Dados pessoais</h3><div className="grid sm:grid-cols-2 gap-3">{campos.map(campo => <div key={campo.rotulo} className="rounded-xl bg-slate-50 border p-3 min-w-0"><div className="text-[10px] uppercase font-bold text-slate-400">{campo.rotulo}</div><div className="flex items-center justify-between gap-2 mt-1"><div className="text-sm font-semibold break-words min-w-0">{campo.valor || 'Não informado'}</div>{campo.copiavel && campo.valor && <button type="button" onClick={() => void copiarTelefone(campo.rotulo, campo.valor || '')} className="p-1.5 rounded-lg text-indigo-700 hover:bg-indigo-100 shrink-0" aria-label={`Copiar ${campo.rotulo.toLowerCase()}`}>{telefoneCopiado === campo.rotulo ? <Check className="w-4 h-4 text-emerald-600"/> : <Copy className="w-4 h-4"/>}</button>}</div></div>)}</div><div className="mt-3 flex gap-2 rounded-xl bg-slate-50 border p-3"><MapPin className="w-4 h-4 text-indigo-600 shrink-0"/><span className="text-sm break-words">{[aluno.enderecoRua, aluno.numero, aluno.bairro, aluno.cidade].filter(Boolean).join(', ') || 'Endereço não informado'}</span></div></div></div>
-        <section className={`rounded-2xl border p-4 sm:p-5 ${coresSituacao[situacao]}`}><div className="grid lg:grid-cols-[220px_1fr_auto] lg:items-end gap-4"><label><span className="block text-xs font-extrabold mb-2">Situação do aluno</span><select value={situacao} onChange={e => setSituacao(e.target.value as Aluno['situacao'] | '')} disabled={!onSalvarAluno} className={`w-full border-2 rounded-xl px-3 py-3 text-sm font-black outline-none ${coresSituacao[situacao]}`}><option value="" disabled>Selecione a situação</option><option value="Ativo">Ativo</option><option value="Inativo">Inativo</option><option value="Cancelado">Cancelado</option></select></label><label className="min-w-0"><span className="block text-xs font-extrabold mb-2">Observações</span><textarea value={observacoes} onChange={e => setObservacoes(e.target.value)} disabled={!onSalvarAluno} rows={3} placeholder="Registre aqui informações importantes sobre o aluno" className="w-full border border-slate-300 bg-white text-slate-900 rounded-xl px-3 py-3 text-sm resize-y"/></label><button type="button" onClick={() => void salvarFicha()} disabled={!onSalvarAluno || salvandoFicha} className="w-full lg:w-auto justify-center px-5 py-3 rounded-xl bg-indigo-600 text-white font-bold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4"/>{salvandoFicha ? 'Salvando...' : salvoFicha ? 'Salvo' : 'Salvar e voltar'}</button></div>{!situacao && <p className="mt-3 text-xs font-bold">Situação ainda não cadastrada. Escolha o valor correto para este aluno.</p>}{erroFicha && <p className="mt-3 text-sm font-bold text-rose-700">{erroFicha}</p>}</section>
-        <section><h3 className="font-extrabold mb-3">Matrículas ({matriculas.length})</h3><div className="space-y-3">{matriculas.length === 0 ? <div className="border border-dashed rounded-2xl p-6 text-sm text-slate-500">Nenhuma matrícula vinculada.</div> : matriculas.map(m => <div key={m.idMatricula} className="border rounded-2xl p-4 flex flex-col sm:flex-row sm:justify-between gap-4 sm:items-center"><div className="min-w-0"><b className="break-words">{m.turma || `${m.curso} - ${m.horario}`}</b><div className="text-xs text-slate-500 mt-1 break-all">{m.anoSemestre} • {m.idMatricula}</div></div><div className="grid sm:flex gap-2"><button disabled={!!gerando} onClick={() => void abrirPdf(m)} className="justify-center px-3 py-2 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-700 flex gap-1"><FileText className="w-4 h-4"/>Visualizar PDF</button><button disabled={!!gerando} onClick={() => void abrirPdf(m, true)} className="justify-center px-3 py-2 text-xs font-bold rounded-lg bg-slate-100 text-slate-700 flex gap-1"><Printer className="w-4 h-4"/>Imprimir</button><button onClick={() => onEditarMatricula?.(m)} disabled={!onEditarMatricula} className="justify-center px-3 py-2 text-xs font-bold rounded-lg bg-sky-50 text-sky-700 flex gap-1 disabled:hidden"><Pencil className="w-4 h-4"/>Editar</button><button onClick={() => onExcluirMatricula?.(m)} disabled={!onExcluirMatricula} className="justify-center px-3 py-2 text-xs font-bold rounded-lg bg-rose-50 text-rose-700 flex gap-1 disabled:hidden"><Trash2 className="w-4 h-4"/>Excluir</button></div></div>)}</div></section>
+        <section className={`rounded-2xl border p-4 sm:p-5 ${coresSituacao[situacao]}`}><div className="grid lg:grid-cols-[220px_1fr_auto] lg:items-end gap-4"><div><span className="block text-xs font-extrabold mb-2">Situação geral do aluno</span><div className={`w-full border-2 rounded-xl px-3 py-3 text-sm font-black ${coresSituacao[situacao]}`}>{situacao}</div><p className="text-[11px] mt-2 font-semibold">Calculada automaticamente pelas matrículas.</p></div><label className="min-w-0"><span className="block text-xs font-extrabold mb-2">Observações</span><textarea value={observacoes} onChange={e => setObservacoes(e.target.value)} disabled={!onSalvarAluno} rows={3} placeholder="Registre aqui informações importantes sobre o aluno" className="w-full border border-slate-300 bg-white text-slate-900 rounded-xl px-3 py-3 text-sm resize-y"/></label><button type="button" onClick={() => void salvarFicha()} disabled={!onSalvarAluno || salvandoFicha} className="w-full lg:w-auto justify-center px-5 py-3 rounded-xl bg-indigo-600 text-white font-bold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4"/>{salvandoFicha ? 'Salvando...' : salvoFicha ? 'Salvo' : 'Salvar observações'}</button></div>{erroFicha && <p className="mt-3 text-sm font-bold text-rose-700">{erroFicha}</p>}</section>
+        <section><h3 className="font-extrabold mb-3">Matrículas ({matriculas.length})</h3><div className="space-y-3">{matriculas.length === 0 ? <div className="border border-dashed rounded-2xl p-6 text-sm text-slate-500">Nenhuma matrícula vinculada.</div> : matriculas.map(m => { const situacaoMatricula = situacoesMatriculas[m.idMatricula] || m.situacao; return <div key={m.idMatricula} className="border rounded-2xl p-4 flex flex-col gap-4"><div className="flex flex-col sm:flex-row sm:justify-between gap-3 sm:items-center"><div className="min-w-0"><b className="break-words">{m.turma || `${m.curso} - ${m.horario}`}</b><div className="text-xs text-slate-500 mt-1 break-all">{m.anoSemestre} • {m.idMatricula}</div></div><label className="sm:w-40"><span className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Situação da matrícula</span><select value={situacaoMatricula} disabled={!onSalvarMatricula || salvandoMatricula === m.idMatricula} onChange={(event) => void salvarSituacaoMatricula(m, event.target.value as Matricula['situacao'])} className={`w-full border-2 rounded-xl px-3 py-2 text-sm font-black outline-none ${coresSituacao[situacaoMatricula]}`}><option value="Ativo">Ativo</option><option value="Inativo">Inativo</option><option value="Cancelado">Cancelado</option></select></label></div><div className="grid sm:flex gap-2"><button disabled={!!gerando} onClick={() => void abrirPdf(m)} className="justify-center px-3 py-2 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-700 flex gap-1"><FileText className="w-4 h-4"/>Visualizar PDF</button><button disabled={!!gerando} onClick={() => void abrirPdf(m, true)} className="justify-center px-3 py-2 text-xs font-bold rounded-lg bg-slate-100 text-slate-700 flex gap-1"><Printer className="w-4 h-4"/>Imprimir</button><button onClick={() => onEditarMatricula?.(m)} disabled={!onEditarMatricula} className="justify-center px-3 py-2 text-xs font-bold rounded-lg bg-sky-50 text-sky-700 flex gap-1 disabled:hidden"><Pencil className="w-4 h-4"/>Editar</button><button onClick={() => onExcluirMatricula?.(m)} disabled={!onExcluirMatricula} className="justify-center px-3 py-2 text-xs font-bold rounded-lg bg-rose-50 text-rose-700 flex gap-1 disabled:hidden"><Trash2 className="w-4 h-4"/>Excluir</button></div></div>})}</div></section>
       </div>
     </article>
   </div>;

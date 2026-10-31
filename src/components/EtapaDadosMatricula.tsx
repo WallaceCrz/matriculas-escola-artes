@@ -102,6 +102,20 @@ export const EtapaDadosMatricula: React.FC<EtapaDadosMatriculaProps> = ({
 
 
         {/* Termos e Autorizações */}
+        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+          <label className="block text-sm font-bold text-slate-900 mb-2">Situação da matrícula</label>
+          <select
+            value={matricula.situacao}
+            onChange={(event) => setMatricula((previous) => ({ ...previous, situacao: event.target.value as Matricula['situacao'] }))}
+            className="w-full px-4 py-3 rounded-xl border-2 border-slate-300 bg-white font-bold outline-none focus:border-indigo-500"
+          >
+            <option value="Ativo">Ativo</option>
+            <option value="Inativo">Inativo</option>
+            <option value="Cancelado">Cancelado</option>
+          </select>
+          <p className="text-xs text-slate-500 mt-2">A situação geral do aluno será calculada automaticamente a partir de todas as matrículas.</p>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold text-slate-900 uppercase">

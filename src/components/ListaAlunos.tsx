@@ -90,6 +90,7 @@ export const ListaAlunos: React.FC = () => {
       podeSairSozinho: true,
       utilizaraTransporte: false,
       anoSemestre: '2026.2',
+      situacao: 'Ativo' as const,
     };
     setGerandoPdf(true);
     try {

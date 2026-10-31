@@ -2,7 +2,7 @@ import { Aluno, Matricula } from '../types';
 import { CONFIG } from '../config';
 import { limpaCPF, calcularIdade, dataParaBR } from '../utils/cpfUtils';
 
-export const APP_SCRIPT_VERSION = 'EA_APP_2026_08_28_01';
+export const APP_SCRIPT_VERSION = 'EA_APP_2026_10_31_01';
 const API_BASE = '/api';
 const CACHE_TTL_MS = 120_000;
 const fotoDataUrlCache = new Map<string, string>();
@@ -50,6 +50,9 @@ export function normalizarSituacaoAluno(valor: unknown): Aluno['situacao'] | und
   if (situacao === 'cancelado' || situacao === 'desistente' || situacao === 'abandono') return 'Cancelado';
   return undefined;
 }
+
+export const normalizarSituacaoMatricula = (valor: unknown): Matricula['situacao'] =>
+  normalizarSituacaoAluno(valor) || 'Ativo';
 
 function mapearAlunoBruto(raw: Record<string, unknown>, cpfFallback = ''): Aluno {
   const nascimento = dataParaBR(String(pick(raw, 'Data de Nascimento', 'dataNascimento')));
@@ -105,7 +108,27 @@ function mapearMatriculaBruta(raw: Record<string, unknown>): Matricula {
     utilizaraTransporte: String(pick(raw, 'Utilizará Transporte', 'utilizaraTransporte')).toUpperCase() === 'SIM' || raw.utilizaraTransporte === true,
     anoSemestre: normalizarAnoSemestre(pick(raw, 'Ano/Semestre', 'anoSemestre')),
     responsavelMatricula: String(pick(raw, 'Responsavel pela matricula', 'responsavelMatricula')),
+    situacao: normalizarSituacaoMatricula(pick(raw, 'Situação', 'Situacao', 'situacao')),
   };
+}
+
+export function calcularSituacaoAluno(matriculas: Matricula[]): Aluno['situacao'] {
+  if (matriculas.some((matricula) => matricula.situacao === 'Ativo')) return 'Ativo';
+  if (matriculas.some((matricula) => matricula.situacao === 'Inativo')) return 'Inativo';
+  return matriculas.length ? 'Cancelado' : 'Inativo';
+}
+
+function recalcularSituacoesAlunos() {
+  const porAluno = new Map<string, Matricula[]>();
+  for (const matricula of cacheMatriculas) {
+    const lista = porAluno.get(matricula.idAluno) || [];
+    lista.push(matricula);
+    porAluno.set(matricula.idAluno, lista);
+  }
+  cacheAlunos = cacheAlunos.map((aluno) => ({
+    ...aluno,
+    situacao: calcularSituacaoAluno(porAluno.get(aluno.idAluno) || []),
+  }));
 }
 
 export function dedupAlunos(lista: Aluno[]): Aluno[] {
@@ -122,8 +145,8 @@ export function dedupMatriculas(lista: Matricula[]): Matricula[] {
 
 export function getStoredAlunos(): Aluno[] { return [...cacheAlunos]; }
 export function getStoredMatriculas(): Matricula[] { return [...cacheMatriculas]; }
-export function saveStoredAlunos(alunos: Aluno[]): void { cacheAlunos = dedupAlunos(alunos); }
-export function saveStoredMatriculas(matriculas: Matricula[]): void { cacheMatriculas = dedupMatriculas(matriculas); }
+export function saveStoredAlunos(alunos: Aluno[]): void { cacheAlunos = dedupAlunos(alunos); recalcularSituacoesAlunos(); }
+export function saveStoredMatriculas(matriculas: Matricula[]): void { cacheMatriculas = dedupMatriculas(matriculas); recalcularSituacoesAlunos(); }
 
 async function api<T = any>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}/${path}`, {
@@ -167,6 +190,7 @@ export const apiService = {
         cacheAlunos = dedupAlunos((result.alunos || []).map((item) => mapearAlunoBruto(item)));
         const ids = new Set(cacheAlunos.map((aluno) => aluno.idAluno));
         cacheMatriculas = dedupMatriculas((result.matriculas || []).map((item) => mapearMatriculaBruta(item))).filter((item) => ids.has(item.idAluno));
+        recalcularSituacoesAlunos();
         ultimaSincronizacao = Date.now();
         return { sucesso: true, mensagem: `${cacheAlunos.length} alunos carregados do banco.`, totalAlunos: cacheAlunos.length };
       })
@@ -197,13 +221,16 @@ export const apiService = {
   async salvarAlunoSomente(aluno: Aluno) {
     const result = await api<{ idAluno: string; aluno: Aluno; mensagem: string }>('alunos', { method: 'POST', body: JSON.stringify({ aluno }) });
     atualizarAluno(mapearAlunoBruto(result.aluno as unknown as Record<string, unknown>));
+    recalcularSituacoesAlunos();
     return { sucesso: true, idAluno: result.idAluno, mensagem: result.mensagem };
   },
 
   async salvarAlunoEMatricula(aluno: Aluno, matricula: Matricula) {
-    const result = await api<{ idAluno: string; idMatricula: string; mensagem: string }>('matriculas', { method: 'POST', body: JSON.stringify({ aluno, matricula }) });
-    atualizarAluno({ ...aluno, idAluno: result.idAluno });
-    cacheMatriculas = dedupMatriculas([...cacheMatriculas, { ...matricula, idAluno: result.idAluno, idMatricula: result.idMatricula }]);
+    const result = await api<{ idAluno: string; idMatricula: string; aluno?: Aluno; matricula?: Matricula; mensagem: string }>('matriculas', { method: 'POST', body: JSON.stringify({ aluno, matricula }) });
+    atualizarAluno(result.aluno ? mapearAlunoBruto(result.aluno as unknown as Record<string, unknown>) : { ...aluno, idAluno: result.idAluno });
+    const matriculaSalva = result.matricula ? mapearMatriculaBruta(result.matricula as unknown as Record<string, unknown>) : { ...matricula, idAluno: result.idAluno, idMatricula: result.idMatricula };
+    cacheMatriculas = dedupMatriculas([...cacheMatriculas, matriculaSalva]);
+    recalcularSituacoesAlunos();
     return { sucesso: true, ...result };
   },
 
@@ -220,6 +247,7 @@ export const apiService = {
     try {
       const result = await api<{ mensagem: string }>(`matriculas/${encodeURIComponent(idMatricula)}`, { method: 'DELETE', body: JSON.stringify({ usuario }) });
       cacheMatriculas = cacheMatriculas.filter((item) => item.idMatricula !== idMatricula);
+      recalcularSituacoesAlunos();
       return { sucesso: true, mensagem: result.mensagem };
     } catch (error) { return { sucesso: false, mensagem: error instanceof Error ? error.message : String(error) }; }
   },

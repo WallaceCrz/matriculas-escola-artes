@@ -1,3 +1,5 @@
+export type SituacaoCadastro = 'Ativo' | 'Inativo' | 'Cancelado';
+
 export interface Aluno {
   idAluno: string;
   nomeCompleto: string;
@@ -30,7 +32,7 @@ export interface Aluno {
   fotoUrl: string; // Base64 apenas durante o cadastro; URL do Drive após salvar
   responsavel?: string; // Responsável legal que assinará quando o aluno for menor.
   responsavelCadastro?: string;
-  situacao?: 'Ativo' | 'Inativo' | 'Cancelado';
+  situacao?: SituacaoCadastro;
   observacoes?: string;
 }
 
@@ -46,6 +48,7 @@ export interface Matricula {
   anoSemestre: string;
   assinaturaUrl?: string; // Base64 signature image
   responsavelMatricula?: string;
+  situacao: SituacaoCadastro;
 }
 
 export type PerfilUsuario = 'administrador' | 'professor' | 'operador';

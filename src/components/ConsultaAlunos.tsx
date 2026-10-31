@@ -14,12 +14,14 @@ interface Props {
   onExcluirAluno?: (aluno: Aluno) => void | Promise<void>;
   onEditarMatricula?: (aluno: Aluno, matricula: Matricula) => void;
   onExcluirMatricula?: (matricula: Matricula) => void | Promise<void>;
+  onSalvarAluno?: (aluno: Aluno) => Promise<Aluno | void>;
+  onSalvarMatricula?: (aluno: Aluno, matricula: Matricula) => Promise<Matricula | void>;
 }
 
 const FotoAluno: React.FC<{ aluno: Aluno }> = ({ aluno }) => <div className="w-11 h-11 rounded-full bg-sky-100 text-sky-800 overflow-hidden shrink-0 flex items-center justify-center font-black">{aluno.fotoUrl?<img src={aluno.fotoUrl} alt="" className="w-full h-full object-cover"/>:(aluno.nomeCompleto || '?').charAt(0).toUpperCase()}</div>;
 
 export const ConsultaAlunos: React.FC<Props> = ({
-  onEditarAluno, onAdicionarMatricula, onCadastrarNovo, onExcluirAluno, onEditarMatricula, onExcluirMatricula,
+  onEditarAluno, onAdicionarMatricula, onCadastrarNovo, onExcluirAluno, onEditarMatricula, onExcluirMatricula, onSalvarAluno, onSalvarMatricula,
 }) => {
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [matriculas, setMatriculas] = useState<Matricula[]>([]);
@@ -84,6 +86,6 @@ export const ConsultaAlunos: React.FC<Props> = ({
         {filtrados.length>limite&&<div className="text-center"><button onClick={()=>setLimite(valor=>valor+50)} className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-sm">Mostrar mais</button></div>}
       </div>}
     </div>
-    {selecionado&&<FichaAluno aluno={selecionado} matriculas={matriculas.filter(matricula=>matricula.idAluno===selecionado.idAluno)} onFechar={()=>setSelecionado(null)} onEditar={()=>onEditarAluno?.(selecionado)} onMatricular={()=>onAdicionarMatricula?.(selecionado)} onExcluir={async()=>{await onExcluirAluno?.(selecionado);setSelecionado(null);setAlunos(getStoredAlunos());setMatriculas(getStoredMatriculas());}} onEditarMatricula={matricula=>onEditarMatricula?.(selecionado,matricula)} onExcluirMatricula={async matricula=>{await onExcluirMatricula?.(matricula);setMatriculas(getStoredMatriculas());}}/>}
+    {selecionado&&<FichaAluno aluno={selecionado} matriculas={matriculas.filter(matricula=>matricula.idAluno===selecionado.idAluno)} onFechar={()=>setSelecionado(null)} onEditar={()=>onEditarAluno?.(selecionado)} onMatricular={()=>onAdicionarMatricula?.(selecionado)} onExcluir={async()=>{await onExcluirAluno?.(selecionado);setSelecionado(null);setAlunos(getStoredAlunos());setMatriculas(getStoredMatriculas());}} onEditarMatricula={matricula=>onEditarMatricula?.(selecionado,matricula)} onExcluirMatricula={async matricula=>{await onExcluirMatricula?.(matricula);setMatriculas(getStoredMatriculas());setAlunos(getStoredAlunos());}} onSalvarMatricula={async matricula=>{const salva=await onSalvarMatricula?.(selecionado,matricula)||matricula;setMatriculas(getStoredMatriculas());setAlunos(getStoredAlunos());setSelecionado(getStoredAlunos().find(a=>a.idAluno===selecionado.idAluno)||selecionado);return salva}} onSalvarAluno={async atualizado=>{const salvo=await onSalvarAluno?.(atualizado)||atualizado;setAlunos(getStoredAlunos());setSelecionado(salvo);return salvo}}/>}
   </section>;
 };

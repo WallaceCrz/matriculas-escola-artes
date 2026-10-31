@@ -135,16 +135,55 @@ async function flushOutbox(env) {
   return { synced, pending: Number(remaining?.total || 0) };
 }
 
+function normalizeStatus(value, fallback = 'Ativo') {
+  const status = String(value || '').trim().toLocaleLowerCase('pt-BR');
+  if (status === 'ativo') return 'Ativo';
+  if (status === 'inativo') return 'Inativo';
+  if (['cancelado', 'desistente', 'abandono'].includes(status)) return 'Cancelado';
+  return fallback;
+}
+
+function deriveStudentStatus(statuses) {
+  const normalized = statuses.map((status) => normalizeStatus(status));
+  if (normalized.includes('Ativo')) return 'Ativo';
+  if (normalized.includes('Inativo')) return 'Inativo';
+  return normalized.length ? 'Cancelado' : 'Inativo';
+}
+
+async function recalculateStudentStatus(db, idAluno) {
+  const [student, enrollments] = await Promise.all([
+    db.prepare('SELECT dados_json FROM alunos WHERE id_aluno = ?').bind(idAluno).first(),
+    db.prepare('SELECT situacao FROM matriculas WHERE id_aluno = ?').bind(idAluno).all(),
+  ]);
+  if (!student?.dados_json) return null;
+  const record = JSON.parse(student.dados_json);
+  const situacao = deriveStudentStatus((enrollments.results || []).map((row) => row.situacao));
+  const updated = { ...record, situacao, Situacao: situacao, 'Situação': situacao };
+  await db.prepare('UPDATE alunos SET dados_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id_aluno = ?')
+    .bind(JSON.stringify(updated), idAluno).run();
+  return updated;
+}
+
 async function listData(db) {
   const [alunos, matriculas] = await Promise.all([
     db.prepare('SELECT id_aluno, cpf, dados_json FROM alunos ORDER BY nome_completo COLLATE NOCASE').all(),
-    db.prepare('SELECT id_matricula, id_aluno, dados_json FROM matriculas ORDER BY updated_at DESC').all(),
+    db.prepare('SELECT id_matricula, id_aluno, situacao, dados_json FROM matriculas ORDER BY updated_at DESC').all(),
   ]);
+  const matriculasMapeadas = (matriculas.results || []).map((row) => ({
+    ...JSON.parse(row.dados_json), ID_MATRICULA: row.id_matricula, idMatricula: row.id_matricula,
+    ID_ALUNO: row.id_aluno, idAluno: row.id_aluno, situacao: normalizeStatus(row.situacao),
+  }));
+  const situacoesPorAluno = new Map();
+  for (const matricula of matriculasMapeadas) {
+    const lista = situacoesPorAluno.get(matricula.idAluno) || [];
+    lista.push(matricula.situacao);
+    situacoesPorAluno.set(matricula.idAluno, lista);
+  }
   return {
     // As chaves relacionais do D1 são a fonte de verdade. Bancos importados
     // podem conter IDs antigos dentro do JSON, o que fazia turmas desaparecerem.
-    alunos: (alunos.results || []).map((row) => ({ ...JSON.parse(row.dados_json), ID_ALUNO: row.id_aluno, idAluno: row.id_aluno, CPF: row.cpf, cpf: row.cpf })),
-    matriculas: (matriculas.results || []).map((row) => ({ ...JSON.parse(row.dados_json), ID_MATRICULA: row.id_matricula, idMatricula: row.id_matricula, ID_ALUNO: row.id_aluno, idAluno: row.id_aluno })),
+    alunos: (alunos.results || []).map((row) => ({ ...JSON.parse(row.dados_json), ID_ALUNO: row.id_aluno, idAluno: row.id_aluno, CPF: row.cpf, cpf: row.cpf, situacao: deriveStudentStatus(situacoesPorAluno.get(row.id_aluno) || []) })),
+    matriculas: matriculasMapeadas,
   };
 }
 
@@ -199,16 +238,17 @@ async function saveMatricula(env, aluno, matricula) {
   if (!/^\d{4}\.[12]$/.test(String(matricula.anoSemestre || ''))) throw new Error('Ano/semestre da matrícula inválido.');
   const savedAluno = await saveAluno(env, aluno, false);
   const idMatricula = id('MAT', matricula.idMatricula);
-  const record = { ...matricula, idMatricula, idAluno: savedAluno.idAluno };
+  const situacao = normalizeStatus(matricula.situacao);
+  const record = { ...matricula, idMatricula, idAluno: savedAluno.idAluno, situacao };
   const duplicate = await env.DB.prepare(`SELECT id_matricula FROM matriculas
     WHERE id_aluno = ? AND curso = ? AND horario = ? AND ano_semestre = ? AND id_matricula <> ? LIMIT 1`)
     .bind(record.idAluno, record.curso, record.horario, record.anoSemestre, idMatricula).first();
   if (duplicate) return { duplicate: duplicate.id_matricula };
-  await env.DB.prepare(`INSERT INTO matriculas (id_matricula, id_aluno, curso, horario, ano_semestre, dados_json)
-    VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id_matricula) DO UPDATE SET id_aluno=excluded.id_aluno,
+  await env.DB.prepare(`INSERT INTO matriculas (id_matricula, id_aluno, curso, horario, ano_semestre, situacao, dados_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id_matricula) DO UPDATE SET id_aluno=excluded.id_aluno,
     curso=excluded.curso, horario=excluded.horario, ano_semestre=excluded.ano_semestre,
-    dados_json=excluded.dados_json, updated_at=CURRENT_TIMESTAMP`)
-    .bind(idMatricula, record.idAluno, record.curso, record.horario, record.anoSemestre, JSON.stringify(record)).run();
+    situacao=excluded.situacao, dados_json=excluded.dados_json, updated_at=CURRENT_TIMESTAMP`)
+    .bind(idMatricula, record.idAluno, record.curso, record.horario, record.anoSemestre, situacao, JSON.stringify(record)).run();
   if (record.turma) {
     const turma = await env.DB.prepare('SELECT id_turma FROM turmas WHERE nome = ? AND ativa = 1 LIMIT 1').bind(record.turma).first();
     if (turma?.id_turma) {
@@ -217,10 +257,11 @@ async function saveMatricula(env, aluno, matricula) {
       if (turmaAtualizada) await enqueue(env.DB, 'turma', turma.id_turma, 'salvar', { action: 'salvarTurma', body: { turma: turmaAtualizada } });
     }
   }
+  const updatedStudent = await recalculateStudentStatus(env.DB, savedAluno.idAluno) || savedAluno;
   await enqueue(env.DB, 'aluno', savedAluno.idAluno, 'salvar_matricula', {
-    action: 'salvarAlunoEMatricula', body: { aluno: savedAluno, matricula: record },
+    action: 'salvarAlunoEMatricula', body: { aluno: updatedStudent, matricula: record },
   });
-  return { aluno: savedAluno, matricula: record };
+  return { aluno: updatedStudent, matricula: record };
 }
 
 async function createSession(env, user) {
@@ -368,7 +409,9 @@ export async function onRequest(context) {
     if (request.method === 'POST' && path === 'alunos') {
       if (!canWrite(session)) return json({ sucesso: false, mensagem: 'Seu perfil não pode alterar alunos.' }, 403);
       const payload = await body(request);
-      const aluno = await saveAluno(env, payload.aluno || {});
+      const salvo = await saveAluno(env, payload.aluno || {}, false);
+      const aluno = await recalculateStudentStatus(env.DB, salvo.idAluno) || salvo;
+      await enqueue(env.DB, 'aluno', aluno.idAluno, 'salvar', { action: 'salvarAluno', body: { aluno } });
       context.waitUntil(flushOutbox(env));
       return json({ sucesso: true, idAluno: aluno.idAluno, aluno, mensagem: 'Aluno salvo no banco.' });
     }
@@ -378,7 +421,7 @@ export async function onRequest(context) {
       const result = await saveMatricula(env, payload.aluno || {}, payload.matricula || {});
       if (result.duplicate) return json({ sucesso: false, mensagem: `Este aluno já possui a matrícula ${result.duplicate}.` }, 409);
       context.waitUntil(flushOutbox(env));
-      return json({ sucesso: true, idAluno: result.aluno.idAluno, idMatricula: result.matricula.idMatricula, mensagem: 'Matrícula salva no banco.' });
+      return json({ sucesso: true, idAluno: result.aluno.idAluno, idMatricula: result.matricula.idMatricula, aluno: result.aluno, matricula: result.matricula, mensagem: 'Matrícula salva no banco.' });
     }
     if (request.method === 'PUT' && parts[0] === 'usuarios' && parts[1] === 'perfis' && parts[2]) {
       if (!isAdmin(session)) return json({ sucesso: false, mensagem: 'Apenas o administrador pode alterar perfis.' }, 403);
@@ -403,8 +446,13 @@ export async function onRequest(context) {
     if (request.method === 'DELETE' && parts[0] === 'matriculas' && parts[1]) {
       if (!canWrite(session)) return json({ sucesso: false, mensagem: 'Seu perfil não pode excluir matrículas.' }, 403);
       const payload = await body(request);
+      const matricula = await env.DB.prepare('SELECT id_aluno FROM matriculas WHERE id_matricula = ?').bind(parts[1]).first();
       await env.DB.prepare('DELETE FROM matriculas WHERE id_matricula = ?').bind(parts[1]).run();
       await enqueue(env.DB, 'matricula', parts[1], 'excluir', { action: 'excluirMatricula', params: { idMatricula: parts[1], usuario: payload.usuario || 'Não informado' } });
+      if (matricula?.id_aluno) {
+        const aluno = await recalculateStudentStatus(env.DB, matricula.id_aluno);
+        if (aluno) await enqueue(env.DB, 'aluno', matricula.id_aluno, 'salvar', { action: 'salvarAluno', body: { aluno } });
+      }
       context.waitUntil(flushOutbox(env));
       return json({ sucesso: true, mensagem: 'Matrícula excluída do banco.' });
     }

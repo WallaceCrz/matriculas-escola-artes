@@ -205,6 +205,7 @@ https://script.google.com/macros/s/AKfycbwEE6hWFbYorn_o9Zyo1_uczxi9uGGX-lJ-aqMAd
 | 31/10/2026 | `efe3db0` | Um aluno precisava desistir de um curso sem ser desativado nos demais. | Situação transferida para cada matrícula; situação geral do aluno passou a ser calculada. |
 | 20/11/2026 | `93bdb70` | Matrículas de Teatro apareciam nos filtros, mas alunos não apareciam na lista das turmas. | Reconciliação dos vínculos e normalização dos nomes antigos das turmas. |
 | 20/11/2026 | `20e7e49` | Não existia histórico completo de quem alterou ou excluiu registros. | Criada auditoria administrativa, filtros por marcador e importação dos excluídos anteriores. |
+| 20/11/2026 | `fix: encerra falhas permanentes da sincronização` | A fila repetia indefinidamente operações obsoletas ou cadastros inválidos, e a tela não avisava que um aluno precisava de correção. | Operações de entidades inexistentes são ignoradas, erros encerram após oito tentativas, versões foram alinhadas e a tela inicial passou a exibir alertas de cadastro para todos os perfis. |
 
 ## 11. Migrações do banco
 
@@ -220,6 +221,7 @@ https://script.google.com/macros/s/AKfycbwEE6hWFbYorn_o9Zyo1_uczxi9uGGX-lJ-aqMAd
 | `0008_reconcile_theater_memberships.sql` | Recuperação de vínculos específicos de Teatro. |
 | `0009_normalize_legacy_class_names.sql` | Nomes antigos de turmas sincronizados com a relação real. |
 | `0010_audit_log.sql` | Histórico administrativo. |
+| `0011_outbox_failures.sql` | Encerramento de falhas permanentes e limpeza de operações obsoletas da fila. |
 
 ## 12. Publicação e validação
 
@@ -274,14 +276,13 @@ Esses números são uma fotografia da data indicada e mudarão conforme o uso do
 
 ## 14. Pendências conhecidas
 
-### Divergência da versão do Apps Script
+### Cadastros aguardando correção
 
-Em 20/11/2026 foi identificada esta diferença:
+Em 20/11/2026 foram identificados 20 cadastros com CPF incompleto ou reprovado pela validação dos dígitos. O sistema não tenta completar ou adivinhar esses números. O alerta permanece na tela inicial para todos os perfis até que os dados corretos sejam informados. Operações antigas de backup que não podem ser concluídas ficam encerradas como falha permanente, sem novas tentativas automáticas.
 
-- `Code.gs` e `src/services/api.ts`: `EA_APP_2026_10_31_01`;
-- `functions/api/[[path]].js`: `EA_APP_2026_08_28_01`.
+### Versões da integração
 
-Como o servidor envia sua versão ao Apps Script nas operações de backup, essa divergência pode fazer a planilha recusar itens da fila. Deve ser corrigida e validada em uma alteração própria, sem misturar com mudanças de dados.
+Em 20/11/2026 o `Code.gs`, o frontend e o servidor foram alinhados em `EA_APP_2026_10_31_01`. A implantação 22 do Apps Script manteve a mesma URL pública. A tela passou a consultar a versão realmente publicada, em vez de considerar apenas a disponibilidade do D1.
 
 ### Arquivo legado do Apps Script
 

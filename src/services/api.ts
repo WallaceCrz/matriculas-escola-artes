@@ -175,11 +175,14 @@ export const apiService = {
 
   async verificarVersaoAppsScript() {
     try {
-      await api('health');
-      return { conectado: true, atualizado: true, versao: 'D1', mensagem: 'Banco D1 conectado.' };
+      return await api<{ conectado: boolean; atualizado: boolean; versao: string; versaoEsperada: string; mensagem: string }>('integracao/status');
     } catch (error) {
       return { conectado: false, atualizado: false, mensagem: error instanceof Error ? error.message : String(error) };
     }
+  },
+
+  async listarAlertasCadastros() {
+    return api<{ alertas: Array<{ idAluno: string; nome: string; tipo: string; mensagem: string }>; total: number }>('alertas/cadastros');
   },
 
   async sincronizarComPlanilha(forcar = false): Promise<{ sucesso: boolean; mensagem: string; totalAlunos?: number }> {

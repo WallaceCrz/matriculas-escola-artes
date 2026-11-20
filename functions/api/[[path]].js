@@ -1,7 +1,8 @@
-const APP_SCRIPT_VERSION = 'EA_APP_2026_08_28_01';
+const APP_SCRIPT_VERSION = 'EA_APP_2026_10_31_01';
 const SESSION_COOKIE = 'ea_session';
 const SESSION_DURATION_SECONDS = 4 * 60 * 60;
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+const MAX_OUTBOX_ATTEMPTS = 8;
 
 const json = (data, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 const id = (prefix, received) => String(received || '').trim() || `${prefix}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
@@ -46,6 +47,18 @@ async function getSession(request, env) {
 
 function canWrite(session) { return session?.perfil === 'administrador' || session?.perfil === 'operador'; }
 function isAdmin(session) { return session?.perfil === 'administrador'; }
+
+function validCpf(value) {
+  const cpf = digits(value);
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+  const digit = (length) => {
+    let sum = 0;
+    for (let index = 0; index < length; index++) sum += Number(cpf[index]) * (length + 1 - index);
+    const rest = (sum * 10) % 11;
+    return rest === 10 ? 0 : rest;
+  };
+  return digit(9) === Number(cpf[9]) && digit(10) === Number(cpf[10]);
+}
 
 async function callAppsScript(env, payload, method = 'POST') {
   if (!env.APPS_SCRIPT_URL) throw new Error('APPS_SCRIPT_URL não configurada.');
@@ -170,10 +183,21 @@ async function sendToSpreadsheet(env, item) {
   }
 }
 
+async function outboxEntityExists(db, item) {
+  if (item.operacao === 'excluir') return true;
+  const table = item.entidade === 'aluno' ? ['alunos', 'id_aluno']
+    : item.entidade === 'matricula' ? ['matriculas', 'id_matricula']
+      : item.entidade === 'turma' ? ['turmas', 'id_turma'] : null;
+  if (!table) return true;
+  const row = await db.prepare(`SELECT 1 ok FROM ${table[0]} WHERE ${table[1]} = ? LIMIT 1`).bind(item.entidade_id).first();
+  return !!row;
+}
+
 async function flushOutbox(env) {
   const now = Date.now();
   const pending = await env.DB.prepare(`SELECT * FROM planilha_outbox
     WHERE sincronizado_em IS NULL
+      AND falha_permanente_em IS NULL
       AND (proxima_tentativa_em IS NULL OR proxima_tentativa_em <= ?)
       AND (processando_ate IS NULL OR processando_ate < ?)
     ORDER BY COALESCE(proxima_tentativa_em, 0), id LIMIT 20`).bind(now, now).all();
@@ -185,19 +209,33 @@ async function flushOutbox(env) {
       .bind(leaseUntil, item.id, Date.now()).run();
     if (!claimed.meta?.changes) continue;
     try {
+      if (!(await outboxEntityExists(env.DB, item))) {
+        await env.DB.prepare(`UPDATE planilha_outbox SET sincronizado_em = CURRENT_TIMESTAMP,
+          ultimo_erro = 'Ignorado: o registro já não existe no D1.', processando_ate = NULL,
+          proxima_tentativa_em = NULL WHERE id = ?`).bind(item.id).run();
+        synced++;
+        continue;
+      }
       await sendToSpreadsheet(env, item);
       await env.DB.prepare(`UPDATE planilha_outbox SET sincronizado_em = CURRENT_TIMESTAMP,
         ultimo_erro = NULL, processando_ate = NULL, proxima_tentativa_em = NULL WHERE id = ?`).bind(item.id).run();
       synced++;
     } catch (error) {
       const attempts = Number(item.tentativas || 0) + 1;
-      const delay = Math.min(6 * 60 * 60 * 1000, 30_000 * (2 ** Math.min(attempts - 1, 10)));
-      await env.DB.prepare(`UPDATE planilha_outbox SET tentativas = ?, ultimo_erro = ?,
-        processando_ate = NULL, proxima_tentativa_em = ? WHERE id = ?`)
-        .bind(attempts, error instanceof Error ? error.message : String(error), Date.now() + delay, item.id).run();
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempts >= MAX_OUTBOX_ATTEMPTS) {
+        await env.DB.prepare(`UPDATE planilha_outbox SET tentativas = ?, ultimo_erro = ?,
+          falha_permanente_em = CURRENT_TIMESTAMP, processando_ate = NULL, proxima_tentativa_em = NULL WHERE id = ?`)
+          .bind(attempts, `Falha permanente após ${attempts} tentativa(s): ${message}`, item.id).run();
+      } else {
+        const delay = Math.min(6 * 60 * 60 * 1000, 30_000 * (2 ** Math.min(attempts - 1, 10)));
+        await env.DB.prepare(`UPDATE planilha_outbox SET tentativas = ?, ultimo_erro = ?,
+          processando_ate = NULL, proxima_tentativa_em = ? WHERE id = ?`)
+          .bind(attempts, message, Date.now() + delay, item.id).run();
+      }
     }
   }
-  const remaining = await env.DB.prepare('SELECT COUNT(*) total FROM planilha_outbox WHERE sincronizado_em IS NULL').first();
+  const remaining = await env.DB.prepare('SELECT COUNT(*) total FROM planilha_outbox WHERE sincronizado_em IS NULL AND falha_permanente_em IS NULL').first();
   return { synced, pending: Number(remaining?.total || 0) };
 }
 
@@ -404,6 +442,19 @@ export async function onRequest(context) {
 
   try {
     if (request.method === 'GET' && path === 'health') return json({ sucesso: true, fonte: 'D1' });
+    if (request.method === 'GET' && path === 'integracao/status') {
+      try {
+        const response = await callAppsScript(env, { action: 'versao' }, 'GET');
+        const result = await response.json();
+        const version = String(result?.versao || '');
+        return json({ sucesso: true, conectado: response.ok && !!result?.sucesso, atualizado: version === APP_SCRIPT_VERSION,
+          versao: version, versaoEsperada: APP_SCRIPT_VERSION,
+          mensagem: version === APP_SCRIPT_VERSION ? 'Apps Script conectado e atualizado.' : `Apps Script em versão diferente. Esperado: ${APP_SCRIPT_VERSION}.` });
+      } catch (error) {
+        return json({ sucesso: true, conectado: false, atualizado: false, versao: '', versaoEsperada: APP_SCRIPT_VERSION,
+          mensagem: error instanceof Error ? error.message : 'Apps Script indisponível.' });
+      }
+    }
     if (request.method === 'POST' && path === 'auth/login') {
       const payload = await body(request);
       const user = await authenticate(env, payload.login, payload.senha);
@@ -421,6 +472,23 @@ export async function onRequest(context) {
     if (!session) return json({ sucesso: false, mensagem: 'Sessão expirada. Entre novamente.' }, 401);
     if (request.method === 'GET' && path === 'auth/session') {
       return json({ sucesso: true, sessao: { login: session.login, nome: session.nome, perfil: session.perfil, admin: isAdmin(session), expiresAt: session.expires_at } });
+    }
+    if (request.method === 'GET' && path === 'alertas/cadastros') {
+      const result = await env.DB.prepare('SELECT id_aluno,cpf,nome_completo,dados_json FROM alunos ORDER BY nome_completo COLLATE NOCASE').all();
+      const alertas = [];
+      for (const row of result.results || []) {
+        const record = parseJson(row.dados_json, null);
+        if (!record) {
+          alertas.push({ idAluno: row.id_aluno, nome: row.nome_completo || row.id_aluno, tipo: 'CADASTRO_DANIFICADO', mensagem: 'Os dados completos do cadastro não podem ser lidos.' });
+          continue;
+        }
+        if (!validCpf(row.cpf)) {
+          const cpf = digits(row.cpf);
+          alertas.push({ idAluno: row.id_aluno, nome: row.nome_completo || row.id_aluno, tipo: 'CPF_INVALIDO',
+            mensagem: cpf.length === 11 ? `CPF ${row.cpf} não passa na validação dos dígitos.` : `CPF ${row.cpf || 'não informado'} possui ${cpf.length} de 11 dígitos.` });
+        }
+      }
+      return json({ sucesso: true, alertas, total: alertas.length });
     }
     if (request.method === 'GET' && path === 'auditoria') {
       if (!isAdmin(session)) return json({ sucesso: false, mensagem: 'Apenas o administrador pode consultar o histórico.' }, 403);

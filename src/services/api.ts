@@ -102,7 +102,9 @@ function mapearMatriculaBruta(raw: Record<string, unknown>): Matricula {
     idAluno: String(pick(raw, 'ID_ALUNO', 'idAluno')),
     dataMatricula: normalizarDataMatricula(pick(raw, 'Data da Matrícula', 'dataMatricula')),
     curso: String(pick(raw, 'Curso', 'curso')) as Matricula['curso'],
-    turma: String(pick(raw, 'Turma', 'turma')),
+    // Registros antigos usam "Turma"; os novos usam "turma". Quando ambos
+    // existem, o campo novo contém a divisão específica (Sementes/Aperfeiçoamento).
+    turma: String(pick(raw, 'turma', 'Turma')),
     horario: horario as Matricula['horario'],
     podeSairSozinho: String(pick(raw, 'Pode Sair Sozinho', 'podeSairSozinho')).toUpperCase() === 'SIM' || raw.podeSairSozinho === true,
     utilizaraTransporte: String(pick(raw, 'Utilizará Transporte', 'utilizaraTransporte')).toUpperCase() === 'SIM' || raw.utilizaraTransporte === true,

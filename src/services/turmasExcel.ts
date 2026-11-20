@@ -1,4 +1,5 @@
 import { Aluno, Matricula, Turma } from '../types';
+import { matriculaAtivaDaTurma } from './turmaMembership';
 
 export const CABECALHOS_BUSSOLA = [
   'ID','Nome','Gênero','Data de Nascimento','Estado Civil','Religião','Naturalidade','Possui responsável legal?','Pode sair sozinha da instituição','Nome da mãe','Nome do pai','Número de matrícula','Data de entrada','CEP','Estado ','Municipio','Bairro ','Logradouro','Número','Complemento','Referência','E-mail','Telefone 1 ','Telefone 2 ','RG ','CPF','Possui certidão de nascimento','Possui certidão de reservista','Possui carteira de trabalho','Marcadores','Grau de escolaridade','Situação Escolar','Turno','Unidade de Ensino','Tipo de Unidade de Ensino','Bolsa de estudo','Status do Atendido','Data de desligamento','Motivo de desligamento',
@@ -75,8 +76,8 @@ export async function exportarTurmasExcel(turmas: Turma[], alunos: Aluno[], matr
   for (const turma of turmas.filter((item) => item.ativa !== false)) {
     const linhas = turma.alunosIds.flatMap((idAluno) => {
       const aluno = alunosPorId.get(idAluno);
-      const matricula = matriculas.find((item) => item.idAluno === idAluno && item.anoSemestre === turma.anoSemestre && (item.turma ? item.turma === turma.nome : item.curso === turma.curso && item.horario === turma.horario));
-      return aluno && matricula?.situacao === 'Ativo' ? [montarLinhaBussola(aluno, matricula, turma)] : [];
+      const matricula = matriculaAtivaDaTurma(matriculas, idAluno, turma);
+      return aluno && matricula ? [montarLinhaBussola(aluno, matricula, turma)] : [];
     });
     const sheet = XLSX.utils.aoa_to_sheet([CABECALHOS_BUSSOLA as unknown as string[], ...linhas]);
     const ultimaColuna = XLSX.utils.encode_col(CABECALHOS_BUSSOLA.length - 1);

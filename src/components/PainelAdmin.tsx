@@ -45,11 +45,13 @@ import {
 import { gerarPDFMatricula } from '../services/pdfGenerator';
 import { getStoredAlunos, getStoredMatriculas, saveStoredAlunos, saveStoredMatriculas, apiService } from '../services/api';
 import { limpaCPF } from '../utils/cpfUtils';
-import { Aluno, Matricula } from '../types';
+import { Aluno, Matricula, Turma } from '../types';
 import { SessaoUsuario } from '../services/auth';
 import { GerenciarUsuarios } from './GerenciarUsuarios';
 import { uiFeedback } from '../services/uiFeedback';
 import { AutocompleteDropdown } from './AutocompleteDropdown';
+import { listarTurmas } from '../services/turmas';
+import { alunoAtivoNaTurma, matriculaAtivaDaTurma } from '../services/turmaMembership';
 
 // Aluno de exemplo para testar e pré-visualizar o PDF
 const ALUNO_AMOSTRA: Aluno = {
@@ -110,6 +112,7 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
   // Estados para Gestão de Alunos Cadastrados
   const [alunosSalvos, setAlunosSalvos] = useState<Aluno[]>([]);
   const [matriculasSalvas, setMatriculasSalvas] = useState<Matricula[]>([]);
+  const [turmasSalvas, setTurmasSalvas] = useState<Turma[]>([]);
   const [buscaAluno, setBuscaAluno] = useState('');
   const [alunoSelecionado, setAlunoSelecionado] = useState<Aluno | null>(null);
 
@@ -162,6 +165,7 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
           const resultado = await apiService.sincronizarComPlanilha(true);
           if (resultado.sucesso) {
             carregarDadosLocais();
+            await carregarTurmas();
             uiFeedback.notify('Dados atualizados automaticamente.', 'info');
           }
         } else if (!revisaoRemota.current) revisaoRemota.current = atual;
@@ -182,6 +186,15 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
     }
   };
 
+  const carregarTurmas = async () => {
+    try {
+      const resultado = await listarTurmas();
+      setTurmasSalvas(resultado.turmas);
+    } catch {
+      setTurmasSalvas([]);
+    }
+  };
+
   const handleSincronizar = async () => {
     setSincronizando(true);
     setSyncNotice('');
@@ -190,6 +203,7 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
       setSyncNotice(resultado.mensagem);
       if (resultado.sucesso) {
         carregarDadosLocais();
+        await carregarTurmas();
       }
     } finally {
       setSincronizando(false);
@@ -471,6 +485,9 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
     return `${c} - ${h}` === f;
   };
 
+  const turmasTeatro = turmasSalvas.filter((turma) => turma.curso === 'Teatro');
+  const turmasMusica = turmasSalvas.filter((turma) => turma.curso === 'Música');
+
   const alunosFiltrados = alunosSalvos.filter((a) => {
     // Ignora o aluno de amostra do sistema
     if (a.idAluno === 'ALU-1001' || a.nomeCompleto === 'Gabriel Silva Moura') return false;
@@ -494,7 +511,10 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
       } else {
         if (alunoMatriculas.length === 0) return false;
 
-        const bateTurma = alunoMatriculas.some((m) => matriculaBateFiltroTurma(m, filtroTurma));
+        const turmaSelecionada = turmasSalvas.find((turma) => turma.nome === filtroTurma);
+        const bateTurma = turmaSelecionada
+          ? alunoAtivoNaTurma(alunoMatriculas, a.idAluno, turmaSelecionada)
+          : alunoMatriculas.some((m) => m.situacao === 'Ativo' && matriculaBateFiltroTurma(m, filtroTurma));
 
         if (!bateTurma) return false;
       }
@@ -995,16 +1015,11 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
                 className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
               >
                 <option value="todos">Todos os cursos e turnos</option>
-                <option value="Núcleo">Núcleo</option>
                 <optgroup label="🎭 Teatro">
-                  <option value="Teatro - Manhã">Teatro - Manhã</option>
-                  <option value="Teatro - Tarde">Teatro - Tarde</option>
-                  <option value="Teatro - Noite">Teatro - Noite</option>
+                  {turmasTeatro.map((turma) => <option key={turma.idTurma} value={turma.nome}>{turma.nome}</option>)}
                 </optgroup>
                 <optgroup label="🎵 Música">
-                  <option value="Música - Manhã">Música - Manhã</option>
-                  <option value="Música - Tarde">Música - Tarde</option>
-                  <option value="Música - Noite">Música - Noite</option>
+                  {turmasMusica.map((turma) => <option key={turma.idTurma} value={turma.nome}>{turma.nome}</option>)}
                 </optgroup>
                 <option value="Sem Turma">Sem Turma Definida</option>
               </select>
@@ -1052,7 +1067,12 @@ export const PainelAdmin: React.FC<PainelAdminProps> = ({ modo = 'admin', sessao
                 <tbody className="divide-y divide-slate-100">
                   {alunosFiltrados.map((aluno) => {
                     const todasMatriculasAluno = matriculasSalvas.filter((m) => m.idAluno === aluno.idAluno);
-                    const alunoMatriculas = filtroTurma === 'todos' ? todasMatriculasAluno : todasMatriculasAluno.filter((m) => matriculaBateFiltroTurma(m, filtroTurma));
+                    const turmaSelecionada = turmasSalvas.find((turma) => turma.nome === filtroTurma);
+                    const alunoMatriculas = filtroTurma === 'todos'
+                      ? todasMatriculasAluno
+                      : turmaSelecionada
+                        ? [matriculaAtivaDaTurma(todasMatriculasAluno, aluno.idAluno, turmaSelecionada)].filter((m): m is Matricula => !!m)
+                        : todasMatriculasAluno.filter((m) => m.situacao === 'Ativo' && matriculaBateFiltroTurma(m, filtroTurma));
 
                     return (
                       <tr key={aluno.idAluno} className="hover:bg-indigo-50/50 transition-colors">

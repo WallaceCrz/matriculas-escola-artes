@@ -7,6 +7,7 @@ import { alterarMembrosTurma,listarTurmas,removerTurma,salvarTurma } from '../se
 import { FichaAluno } from './FichaAluno';
 import { CONFIG } from '../config';
 import { exportarTurmasExcel } from '../services/turmasExcel';
+import { alunoAtivoNaTurma, matriculaCorrespondeTurma, matriculaTemTurmaEspecifica, turmaCompativelJaVinculada } from '../services/turmaMembership';
 
 interface Props{sessao:SessaoUsuario;onEditarAluno?:(a:Aluno)=>void;onAdicionarMatricula?:(a:Aluno)=>void;onExcluirAluno?:(a:Aluno)=>void|Promise<void>;onEditarMatricula?:(a:Aluno,m:Matricula)=>void;onExcluirMatricula?:(m:Matricula)=>void|Promise<void>;onSalvarAluno?:(a:Aluno)=>Promise<Aluno|void>;onSalvarMatricula?:(a:Aluno,m:Matricula)=>Promise<Matricula|void>}
 const FotoMiniatura=({aluno}:{aluno:Aluno})=><div className="w-11 h-11 rounded-full bg-slate-100 border overflow-hidden shrink-0 flex items-center justify-center text-xs font-black text-slate-400">{aluno.fotoUrl?<img src={aluno.fotoUrl} alt="" className="w-full h-full object-cover"/>:aluno.nomeCompleto.slice(0,1)}</div>;
@@ -16,10 +17,14 @@ export const TurmasPage:React.FC<Props>=({sessao,onEditarAluno,onAdicionarMatric
  const [nova,setNova]=useState({nome:'',curso:'Teatro' as Turma['curso'],horario:'Manhã' as Turma['horario'],nivel:'' as Turma['nivel']});
  const recarregar=async()=>{const r=await listarTurmas();setTurmas(r.turmas);setCompartilhadas(r.compartilhadas);setSelecionada(s=>s?r.turmas.find(t=>t.idTurma===s.idTurma)||null:null)};
  useEffect(()=>{Promise.all([apiService.sincronizarComPlanilha(true),recarregar()]).finally(()=>{setAlunos(getStoredAlunos());setMatriculas(getStoredMatriculas())})},[]);
- const matriculaDaTurma=(idAluno:string,turma:Turma)=>matriculas.find(m=>m.idAluno===idAluno&&m.anoSemestre===turma.anoSemestre&&(m.turma?m.turma===turma.nome:m.curso===turma.curso&&m.horario===turma.horario));
- const membrosDaTurma=(turma:Turma)=>alunos.filter(a=>turma.alunosIds.includes(a.idAluno)&&matriculaDaTurma(a.idAluno,turma)?.situacao==='Ativo');
+ const membrosDaTurma=(turma:Turma)=>alunos.filter(a=>alunoAtivoNaTurma(matriculas,a.idAluno,turma));
  const membros=selecionada?membrosDaTurma(selecionada):[];
- const idsMatriculadosCompativeis=useMemo(()=>new Set(selecionada?matriculas.filter(m=>m.situacao==='Ativo'&&m.anoSemestre===selecionada.anoSemestre&&(m.turma?m.turma===selecionada.nome:m.curso===selecionada.curso&&m.horario===selecionada.horario)).map(m=>m.idAluno):[]),[selecionada,matriculas]);
+ const idsMatriculadosCompativeis=useMemo(()=>new Set(selecionada?matriculas.filter(m=>{
+   if(m.situacao!=='Ativo'||!matriculaCorrespondeTurma(m,selecionada))return false;
+   if(matriculaTemTurmaEspecifica(m))return true;
+   const vinculada=turmaCompativelJaVinculada(turmas,m);
+   return !vinculada||vinculada.idTurma===selecionada.idTurma;
+ }).map(m=>m.idAluno):[]),[selecionada,matriculas,turmas]);
  const candidatos=useMemo(()=>{if(!selecionada)return[];const q=busca.toLocaleLowerCase('pt-BR');return alunos.filter(a=>idsMatriculadosCompativeis.has(a.idAluno)&&!selecionada.alunosIds.includes(a.idAluno)&&(!q||a.nomeCompleto.toLocaleLowerCase('pt-BR').includes(q)||a.cpf.includes(busca)))},[selecionada,alunos,idsMatriculadosCompativeis,busca]);
  const alterarMembros=async(acao:'adicionar'|'remover',alunosIds:string[])=>{if(!selecionada||!alunosIds.length)return;setSincronizando(true);try{const turma=await alterarMembrosTurma(selecionada.idTurma,acao,alunosIds);setSelecionada(turma);setTurmas(lista=>lista.map(item=>item.idTurma===turma.idTurma?turma:item));setCompartilhadas(true)}finally{setSincronizando(false)}};
  const criar=async(e:React.FormEvent)=>{e.preventDefault();if(!nova.nome.trim())return;const r=await salvarTurma({idTurma:'',nome:nova.nome.trim(),curso:nova.curso,horario:nova.horario,nivel:nova.nivel,anoSemestre:CONFIG.ANO_SEMESTRE_DEFAULT,alunosIds:[],criadaPor:sessao.nome,ativa:true});setCriando(false);await recarregar();setSelecionada(r.turma)};

@@ -20,6 +20,7 @@ import { ConsultaAlunos } from './components/ConsultaAlunos';
 import { FichaAluno } from './components/FichaAluno';
 import { MenuLateral } from './components/MenuLateral';
 import { ArrowLeft } from 'lucide-react';
+import { AuditoriaPage } from './components/AuditoriaPage';
 
 const ALUNO_INITIAL_STATE: Aluno = {
   idAluno: '',
@@ -242,7 +243,7 @@ export default function App() {
         onAbrirModalConfig={() => setModalConfigAberto(true)}
         appsScriptConectado={appsScriptConectado}
         modoVisualizacao={modoVisualizacao}
-        setModoVisualizacao={(modo) => { if (modo !== 'configuracoes' || sessao.admin) setModoVisualizacao(modo); }}
+        setModoVisualizacao={(modo) => { if (!['configuracoes', 'auditoria'].includes(modo) || sessao.admin) setModoVisualizacao(modo); }}
         sessao={sessao}
         onSair={() => { sair(); setSessao(null); setModoVisualizacao('inicio'); }}
       />
@@ -254,6 +255,9 @@ export default function App() {
         {modoVisualizacao === 'inicio' ? <MenuInicial sessao={sessao} onAbrir={setModoVisualizacao}/>
         : modoVisualizacao === 'turmas' ? <TurmasPage sessao={sessao} onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula} onSalvarAluno={handleSalvarAlunoNaFicha} onSalvarMatricula={handleSalvarSituacaoMatricula}/>
         : modoVisualizacao === 'consulta' ? <ConsultaAlunos onEditarAluno={handleEditarAluno} onAdicionarMatricula={handleAdicionarMatricula} onCadastrarNovo={handleCadastrarNovoConsulta} onExcluirAluno={handleExcluirAluno} onEditarMatricula={handleEditarMatricula} onExcluirMatricula={handleExcluirMatricula} onSalvarAluno={handleSalvarAlunoNaFicha} onSalvarMatricula={handleSalvarSituacaoMatricula}/>
+        : modoVisualizacao === 'auditoria' ? (
+          sessao.admin ? <AuditoriaPage/> : <div className="max-w-xl mx-auto bg-rose-50 border border-rose-200 rounded-xl p-6 text-rose-800 font-bold">Acesso restrito ao administrador.</div>
+        )
         : modoVisualizacao === 'configuracoes' ? (
           sessao.admin ? <PainelAdmin modo="admin" onExibirAluno={setAlunoEmFicha}/> : <div className="max-w-xl mx-auto bg-rose-50 border border-rose-200 rounded-xl p-6 text-rose-800 font-bold">Acesso restrito ao administrador.</div>
         ) : (

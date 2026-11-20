@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "matriculas-escola-artes",
+  "compatibility_date": "2026-11-20",
+  "pages_build_output_dir": "./dist",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "matriculas-escola-artes-db",
+      "database_id": "6529fe34-bb0e-4ed4-9c76-246f172b1fa7",
+      "migrations_dir": "./database/migrations"
+    }
+  ]
+}

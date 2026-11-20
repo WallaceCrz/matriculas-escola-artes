@@ -14,6 +14,7 @@ Aplicativo React + Vite para cadastro de alunos e matrículas. O Cloudflare D1 �
 - Cache apenas em memória para alunos, matrículas e fotos.
 - Verificação automática de alterações a cada 30 segundos.
 - Backup `.xlsx` disponível somente no painel do administrador.
+- Histórico administrativo de criações, edições e exclusões, com usuário responsável e valores anteriores/novos.
 - Bloqueio de gravações quando a versão do Apps Script estiver desatualizada.
 
 ## Estrutura da planilha
@@ -43,11 +44,15 @@ EA_APP_2026_10_31_01
 
 ## Painel inicial, professores e turmas
 
-Após o login, o sistema apresenta um painel de opções com Turmas, Consulta e, para administradores, Configurações. O fluxo de Matrículas continua disponível pela navegação do sistema. Usuários cadastrados com o perfil `professor` podem montar turmas e adicionar ou remover alunos conforme o curso e horário de suas matrículas.
+Após o login, o sistema apresenta um painel de opções com Turmas, Consulta e, para administradores, Histórico e Configurações. O fluxo de Matrículas continua disponível pela navegação do sistema. Usuários cadastrados com o perfil `professor` podem montar turmas e adicionar ou remover alunos conforme o curso e horário de suas matrículas.
 
 O sistema fornece nove turmas iniciais: Música Manhã/Tarde/Noite, Teatro Manhã, Teatro Núcleo e as divisões Sementes/Aperfeiçoamento para Teatro Tarde e Teatro Noite. Novas turmas podem ser criadas pelo painel.
 
 Turmas e perfis de usuário são mantidos no D1 e sincronizados com a planilha pelo `Code.gs` publicado.
+
+## Histórico administrativo
+
+A aba **Histórico e excluídos** é exibida somente para o administrador e a API também recusa o acesso de outros perfis. Ela registra criações, edições e exclusões de alunos, matrículas, turmas, vínculos de alunos com turmas e usuários. Cada evento guarda data, responsável, tipo da ação, registro afetado e as diferenças entre os valores anteriores e novos. Fotos, assinaturas e senhas não são copiadas para o histórico. Os registros antigos da aba `EXCLUIDOS` podem ser importados com a origem `PLANILHA_EXCLUIDOS`.
 
 Na ficha do aluno, a situação (`Ativo`, `Inativo` ou `Cancelado`) é selecionada em cada matrícula. A situação geral do aluno é calculada automaticamente: qualquer matrícula ativa mantém o aluno ativo; sem ativas, uma matrícula inativa resulta em aluno inativo; somente matrículas canceladas resultam em aluno cancelado. As observações continuam vinculadas ao aluno. A página de Turmas exporta um arquivo `.xlsx` com as 39 colunas do modelo de importação Bússola v2.0.0, criando uma aba por turma e incluindo somente as matrículas ativas adicionadas à respectiva turma. `ID` e `Número de matrícula` ficam vazios, as colunas de responsável e saída são preenchidas apenas para menores de 18 anos, e `Marcadores` recebe o projeto (`Música` ou `Teatro`). No celular, a turma selecionada substitui a lista e oferece um botão para voltar às turmas.
 

@@ -1,14 +1,17 @@
 import React from 'react';
-import { BookOpenCheck, Search, Settings, UsersRound } from 'lucide-react';
+import { BookOpenCheck, History, Search, Settings, UsersRound } from 'lucide-react';
 import { SessaoUsuario } from '../services/auth';
 
-export type TelaApp = 'inicio' | 'turmas' | 'consulta' | 'matriculas' | 'configuracoes';
+export type TelaApp = 'inicio' | 'turmas' | 'consulta' | 'matriculas' | 'auditoria' | 'configuracoes';
 
 export const MenuInicial: React.FC<{ sessao: SessaoUsuario; onAbrir: (tela: TelaApp) => void }> = ({ sessao, onAbrir }) => {
   const itens = [
     { tela: 'turmas', titulo: 'Turmas', descricao: 'Monte turmas e organize os alunos.', Icon: UsersRound, cor: 'bg-violet-600' },
     { tela: 'consulta', titulo: 'Consulta', descricao: 'Pesquise alunos e abra a ficha completa.', Icon: Search, cor: 'bg-sky-600' },
-    ...(sessao.admin ? [{ tela: 'configuracoes', titulo: 'Configurações', descricao: 'Usuários, integrações e administração.', Icon: Settings, cor: 'bg-slate-700' }] : []),
+    ...(sessao.admin ? [
+      { tela: 'auditoria', titulo: 'Histórico e excluídos', descricao: 'Veja alterações, exclusões e quem realizou cada ação.', Icon: History, cor: 'bg-rose-700' },
+      { tela: 'configuracoes', titulo: 'Configurações', descricao: 'Usuários, integrações e administração.', Icon: Settings, cor: 'bg-slate-700' },
+    ] : []),
   ] as const;
   return <section className="max-w-6xl mx-auto py-8">
     <div className="mb-8"><div className="inline-flex items-center gap-2 text-indigo-700 font-bold text-sm"><BookOpenCheck className="w-5 h-5"/>Painel de trabalho</div><h2 className="text-3xl font-black text-slate-900 mt-2">Olá, {sessao.nome}</h2><p className="text-slate-500 mt-1">Escolha uma opção para começar.</p></div>

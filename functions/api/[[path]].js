@@ -71,6 +71,72 @@ async function body(request) {
   try { return await request.json(); } catch { return {}; }
 }
 
+function parseJson(value, fallback = null) {
+  try { return value ? JSON.parse(value) : fallback; } catch { return fallback; }
+}
+
+function sanitizeAudit(value, depth = 0) {
+  if (depth > 6) return '[conteúdo profundo omitido]';
+  if (value === null || value === undefined || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    if (value.startsWith('data:image/')) return '[imagem omitida]';
+    return value.length > 4000 ? `${value.slice(0, 4000)}…` : value;
+  }
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => sanitizeAudit(item, depth + 1));
+  if (typeof value === 'object') {
+    const clean = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (['senha', 'password', 'assinaturaUrl', 'fotoDataUrl'].includes(key)) continue;
+      clean[key] = sanitizeAudit(item, depth + 1);
+    }
+    return clean;
+  }
+  return String(value);
+}
+
+function sameAuditValue(a, b) { return JSON.stringify(a ?? null) === JSON.stringify(b ?? null); }
+
+function auditDiff(before, after) {
+  const oldRecord = before && typeof before === 'object' ? before : {};
+  const newRecord = after && typeof after === 'object' ? after : {};
+  const changes = {};
+  for (const key of new Set([...Object.keys(oldRecord), ...Object.keys(newRecord)])) {
+    if (['fotoUrl', 'assinaturaUrl'].includes(key)) continue;
+    if (!sameAuditValue(oldRecord[key], newRecord[key])) changes[key] = { antes: sanitizeAudit(oldRecord[key]), depois: sanitizeAudit(newRecord[key]) };
+  }
+  return changes;
+}
+
+async function recordAudit(db, session, entry) {
+  const before = entry.antes === undefined ? null : sanitizeAudit(entry.antes);
+  const after = entry.depois === undefined ? null : sanitizeAudit(entry.depois);
+  const changes = entry.alteracoes || auditDiff(before, after);
+  await db.prepare(`INSERT INTO auditoria
+    (data_hora,usuario_login,usuario_nome,usuario_perfil,acao,entidade,entidade_id,descricao,
+     dados_anteriores_json,dados_novos_json,alteracoes_json,origem)
+    VALUES (COALESCE(?,CURRENT_TIMESTAMP),?,?,?,?,?,?,?,?,?,?,?)`)
+    .bind(entry.dataHora || null, session?.login || 'sistema', session?.nome || 'Sistema', session?.perfil || 'sistema',
+      entry.acao, entry.entidade, String(entry.entidadeId || ''), entry.descricao || '',
+      before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(after),
+      Object.keys(changes).length ? JSON.stringify(changes) : null, entry.origem || 'APP').run();
+}
+
+async function findStudentSnapshot(db, aluno = {}) {
+  let row = aluno.idAluno
+    ? await db.prepare('SELECT id_aluno,cpf,dados_json FROM alunos WHERE id_aluno = ?').bind(aluno.idAluno).first()
+    : null;
+  const cpf = digits(aluno.cpf);
+  if (!row && cpf) row = await db.prepare(`SELECT id_aluno,cpf,dados_json FROM alunos
+    WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(cpf,'.',''),'-',''),' ',''),'(',''),')','') = ? LIMIT 1`).bind(cpf).first();
+  return row ? { ...parseJson(row.dados_json, {}), idAluno: row.id_aluno, cpf: row.cpf } : null;
+}
+
+async function findEnrollmentSnapshot(db, idMatricula) {
+  if (!idMatricula) return null;
+  const row = await db.prepare('SELECT id_matricula,id_aluno,situacao,dados_json FROM matriculas WHERE id_matricula = ?').bind(idMatricula).first();
+  return row ? { ...parseJson(row.dados_json, {}), idMatricula: row.id_matricula, idAluno: row.id_aluno, situacao: normalizeStatus(row.situacao) } : null;
+}
+
 async function enqueue(db, entidade, entidadeId, operacao, payload) {
   await db.prepare(`UPDATE planilha_outbox SET sincronizado_em = CURRENT_TIMESTAMP,
     ultimo_erro = 'Substituído por uma atualização mais recente.'
@@ -356,6 +422,35 @@ export async function onRequest(context) {
     if (request.method === 'GET' && path === 'auth/session') {
       return json({ sucesso: true, sessao: { login: session.login, nome: session.nome, perfil: session.perfil, admin: isAdmin(session), expiresAt: session.expires_at } });
     }
+    if (request.method === 'GET' && path === 'auditoria') {
+      if (!isAdmin(session)) return json({ sucesso: false, mensagem: 'Apenas o administrador pode consultar o histórico.' }, 403);
+      const acao = String(url.searchParams.get('acao') || '').trim();
+      const busca = String(url.searchParams.get('busca') || '').trim();
+      const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 50)));
+      const offset = Math.max(0, Number(url.searchParams.get('offset') || 0));
+      const conditions = [];
+      const values = [];
+      if (acao) { conditions.push('acao = ?'); values.push(acao); }
+      if (busca) {
+        conditions.push(`(usuario_nome LIKE ? OR usuario_login LIKE ? OR descricao LIKE ? OR entidade_id LIKE ?)`);
+        const term = `%${busca}%`;
+        values.push(term, term, term, term);
+      }
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      const [rows, total, markers] = await Promise.all([
+        env.DB.prepare(`SELECT * FROM auditoria ${where} ORDER BY data_hora DESC, id DESC LIMIT ? OFFSET ?`)
+          .bind(...values, limit, offset).all(),
+        env.DB.prepare(`SELECT COUNT(*) total FROM auditoria ${where}`).bind(...values).first(),
+        env.DB.prepare('SELECT acao, COUNT(*) total FROM auditoria GROUP BY acao ORDER BY acao').all(),
+      ]);
+      const eventos = (rows.results || []).map((row) => ({
+        id: row.id, dataHora: row.data_hora, usuarioLogin: row.usuario_login, usuarioNome: row.usuario_nome,
+        usuarioPerfil: row.usuario_perfil, acao: row.acao, entidade: row.entidade, entidadeId: row.entidade_id,
+        descricao: row.descricao, antes: parseJson(row.dados_anteriores_json), depois: parseJson(row.dados_novos_json),
+        alteracoes: parseJson(row.alteracoes_json, {}), origem: row.origem,
+      }));
+      return json({ sucesso: true, eventos, total: Number(total?.total || 0), marcadores: markers.results || [] });
+    }
     if (request.method === 'GET' && path === 'photo') {
       const source = url.searchParams.get('url');
       if (!source) return json({ sucesso: false, mensagem: 'Foto não informada.' }, 400);
@@ -390,13 +485,18 @@ export async function onRequest(context) {
     if (request.method === 'POST' && path === 'usuarios' && isAdmin(session)) {
       const payload = await body(request);
       const response = await callAppsScript(env, { action: 'salvarLogin', nome: payload.nome, login: payload.login, senha: payload.senha, perfil: payload.perfil });
-      return json({ sucesso: true, ...(await readJsonResponse(response, 'Cadastro de usuário')) });
+      const result = await readJsonResponse(response, 'Cadastro de usuário');
+      await recordAudit(env.DB, session, { acao: 'USUARIO_CRIADO', entidade: 'USUARIO', entidadeId: payload.login,
+        descricao: `Usuário ${payload.nome || payload.login} criado.`, depois: { nome: payload.nome, login: payload.login, perfil: payload.perfil || 'operador' } });
+      return json({ sucesso: true, ...result });
     }
     if (request.method === 'DELETE' && parts[0] === 'usuarios' && parts[1] && isAdmin(session)) {
       const login = decodeURIComponent(parts[1]);
       const response = await callAppsScript(env, { action: 'excluirLogin', id: login });
       const result = await readJsonResponse(response, 'Exclusão de usuário');
       await env.DB.prepare('DELETE FROM usuario_perfis WHERE login = ?').bind(normalizeLogin(login)).run();
+      await recordAudit(env.DB, session, { acao: 'USUARIO_EXCLUIDO', entidade: 'USUARIO', entidadeId: login,
+        descricao: `Usuário ${login} excluído.`, antes: { login } });
       return json({ sucesso: true, ...result });
     }
     if (request.method === 'GET' && path === 'revision') {
@@ -409,8 +509,11 @@ export async function onRequest(context) {
     if (request.method === 'POST' && path === 'alunos') {
       if (!canWrite(session)) return json({ sucesso: false, mensagem: 'Seu perfil não pode alterar alunos.' }, 403);
       const payload = await body(request);
+      const before = await findStudentSnapshot(env.DB, payload.aluno || {});
       const salvo = await saveAluno(env, payload.aluno || {}, false);
       const aluno = await recalculateStudentStatus(env.DB, salvo.idAluno) || salvo;
+      await recordAudit(env.DB, session, { acao: before ? 'ALUNO_EDITADO' : 'ALUNO_CRIADO', entidade: 'ALUNO', entidadeId: aluno.idAluno,
+        descricao: `${before ? 'Cadastro atualizado' : 'Aluno cadastrado'}: ${aluno.nomeCompleto || aluno.idAluno}.`, antes: before, depois: aluno });
       await enqueue(env.DB, 'aluno', aluno.idAluno, 'salvar', { action: 'salvarAluno', body: { aluno } });
       context.waitUntil(flushOutbox(env));
       return json({ sucesso: true, idAluno: aluno.idAluno, aluno, mensagem: 'Aluno salvo no banco.' });
@@ -418,8 +521,19 @@ export async function onRequest(context) {
     if (request.method === 'POST' && path === 'matriculas') {
       if (!canWrite(session)) return json({ sucesso: false, mensagem: 'Seu perfil não pode alterar matrículas.' }, 403);
       const payload = await body(request);
+      const beforeStudent = await findStudentSnapshot(env.DB, payload.aluno || {});
+      const beforeEnrollment = await findEnrollmentSnapshot(env.DB, payload.matricula?.idMatricula);
       const result = await saveMatricula(env, payload.aluno || {}, payload.matricula || {});
       if (result.duplicate) return json({ sucesso: false, mensagem: `Este aluno já possui a matrícula ${result.duplicate}.` }, 409);
+      const studentChanges = auditDiff(beforeStudent, result.aluno);
+      if (!beforeStudent || Object.keys(studentChanges).length) {
+        await recordAudit(env.DB, session, { acao: beforeStudent ? 'ALUNO_EDITADO' : 'ALUNO_CRIADO', entidade: 'ALUNO', entidadeId: result.aluno.idAluno,
+          descricao: `${beforeStudent ? 'Cadastro atualizado' : 'Aluno cadastrado'} durante a matrícula: ${result.aluno.nomeCompleto || result.aluno.idAluno}.`,
+          antes: beforeStudent, depois: result.aluno, alteracoes: studentChanges });
+      }
+      await recordAudit(env.DB, session, { acao: beforeEnrollment ? 'MATRICULA_EDITADA' : 'MATRICULA_CRIADA', entidade: 'MATRICULA', entidadeId: result.matricula.idMatricula,
+        descricao: `${beforeEnrollment ? 'Matrícula atualizada' : 'Matrícula criada'} em ${result.matricula.curso} - ${result.matricula.horario}.`,
+        antes: beforeEnrollment, depois: result.matricula });
       context.waitUntil(flushOutbox(env));
       return json({ sucesso: true, idAluno: result.aluno.idAluno, idMatricula: result.matricula.idMatricula, aluno: result.aluno, matricula: result.matricula, mensagem: 'Matrícula salva no banco.' });
     }
@@ -429,45 +543,75 @@ export async function onRequest(context) {
       const login = decodeURIComponent(parts[2]).trim().toLowerCase();
       const perfil = payload.perfil === 'professor' ? 'professor' : payload.perfil === 'operador' ? 'operador' : '';
       if (!login || !perfil) return json({ sucesso: false, mensagem: 'Usuário ou tipo inválido.' }, 400);
+      const previous = await env.DB.prepare('SELECT perfil FROM usuario_perfis WHERE login = ?').bind(login).first();
       await env.DB.prepare(`INSERT INTO usuario_perfis (login, perfil) VALUES (?, ?)
         ON CONFLICT(login) DO UPDATE SET perfil=excluded.perfil, updated_at=CURRENT_TIMESTAMP`).bind(login, perfil).run();
+      await recordAudit(env.DB, session, { acao: 'PERFIL_ALTERADO', entidade: 'USUARIO', entidadeId: login,
+        descricao: `Perfil de ${login} alterado para ${perfil}.`, antes: { login, perfil: previous?.perfil || 'operador' }, depois: { login, perfil } });
       await enqueue(env.DB, 'usuario', login, 'alterar_perfil', { action: 'atualizarPerfilLogin', body: { id: login, perfil } });
       context.waitUntil(flushOutbox(env));
       return json({ sucesso: true, login, perfil, mensagem: 'Tipo de usuário atualizado.' });
     }
     if (request.method === 'DELETE' && parts[0] === 'alunos' && parts[1]) {
       if (!canWrite(session)) return json({ sucesso: false, mensagem: 'Seu perfil não pode excluir alunos.' }, 403);
-      const payload = await body(request);
+      const student = await findStudentSnapshot(env.DB, { idAluno: parts[1] });
+      if (!student) return json({ sucesso: false, mensagem: 'Aluno não encontrado.' }, 404);
+      const enrollmentRows = await env.DB.prepare('SELECT id_matricula,id_aluno,situacao,dados_json FROM matriculas WHERE id_aluno = ?').bind(parts[1]).all();
+      const enrollments = (enrollmentRows.results || []).map((row) => ({ ...parseJson(row.dados_json, {}), idMatricula: row.id_matricula, idAluno: row.id_aluno, situacao: normalizeStatus(row.situacao) }));
       await env.DB.prepare('DELETE FROM alunos WHERE id_aluno = ?').bind(parts[1]).run();
-      await enqueue(env.DB, 'aluno', parts[1], 'excluir', { action: 'excluirAluno', params: { idAluno: parts[1], usuario: payload.usuario || 'Não informado' } });
+      await recordAudit(env.DB, session, { acao: 'ALUNO_EXCLUIDO', entidade: 'ALUNO', entidadeId: parts[1],
+        descricao: `Aluno excluído: ${student.nomeCompleto || parts[1]}.`, antes: { aluno: student, matriculas: enrollments } });
+      for (const enrollment of enrollments) {
+        await recordAudit(env.DB, session, { acao: 'MATRICULA_EXCLUIDA', entidade: 'MATRICULA', entidadeId: enrollment.idMatricula,
+          descricao: `Matrícula excluída junto com o aluno ${student.nomeCompleto || parts[1]}.`, antes: enrollment });
+      }
+      await enqueue(env.DB, 'aluno', parts[1], 'excluir', { action: 'excluirAluno', params: { idAluno: parts[1], usuario: session.nome } });
       context.waitUntil(flushOutbox(env));
       return json({ sucesso: true, mensagem: 'Aluno excluído do banco.' });
     }
     if (request.method === 'DELETE' && parts[0] === 'matriculas' && parts[1]) {
       if (!canWrite(session)) return json({ sucesso: false, mensagem: 'Seu perfil não pode excluir matrículas.' }, 403);
-      const payload = await body(request);
-      const matricula = await env.DB.prepare('SELECT id_aluno FROM matriculas WHERE id_matricula = ?').bind(parts[1]).first();
+      const enrollment = await findEnrollmentSnapshot(env.DB, parts[1]);
+      if (!enrollment) return json({ sucesso: false, mensagem: 'Matrícula não encontrada.' }, 404);
       await env.DB.prepare('DELETE FROM matriculas WHERE id_matricula = ?').bind(parts[1]).run();
-      await enqueue(env.DB, 'matricula', parts[1], 'excluir', { action: 'excluirMatricula', params: { idMatricula: parts[1], usuario: payload.usuario || 'Não informado' } });
-      if (matricula?.id_aluno) {
-        const aluno = await recalculateStudentStatus(env.DB, matricula.id_aluno);
-        if (aluno) await enqueue(env.DB, 'aluno', matricula.id_aluno, 'salvar', { action: 'salvarAluno', body: { aluno } });
+      await recordAudit(env.DB, session, { acao: 'MATRICULA_EXCLUIDA', entidade: 'MATRICULA', entidadeId: parts[1],
+        descricao: `Matrícula excluída: ${enrollment.curso || ''} - ${enrollment.horario || ''}.`, antes: enrollment });
+      await enqueue(env.DB, 'matricula', parts[1], 'excluir', { action: 'excluirMatricula', params: { idMatricula: parts[1], usuario: session.nome } });
+      if (enrollment.idAluno) {
+        const aluno = await recalculateStudentStatus(env.DB, enrollment.idAluno);
+        if (aluno) await enqueue(env.DB, 'aluno', enrollment.idAluno, 'salvar', { action: 'salvarAluno', body: { aluno } });
       }
       context.waitUntil(flushOutbox(env));
       return json({ sucesso: true, mensagem: 'Matrícula excluída do banco.' });
     }
     if (request.method === 'PATCH' && parts[0] === 'turmas' && parts[1] && parts[2] === 'membros') {
+      if (!canWrite(session)) return json({ sucesso: false, mensagem: 'Seu perfil não pode alterar alunos da turma.' }, 403);
       const payload = await body(request);
       const memberIds = [...new Set((Array.isArray(payload.alunosIds) ? payload.alunosIds : []).map((value) => String(value || '').trim()).filter(Boolean))];
       if (!['adicionar', 'remover'].includes(payload.acao) || memberIds.length === 0) {
         return json({ sucesso: false, mensagem: 'Alteração de alunos da turma inválida.' }, 400);
       }
-      const turmaExists = await env.DB.prepare('SELECT id_turma FROM turmas WHERE id_turma = ? AND ativa = 1').bind(parts[1]).first();
+      const turmaExists = await env.DB.prepare('SELECT id_turma,nome FROM turmas WHERE id_turma = ? AND ativa = 1').bind(parts[1]).first();
       if (!turmaExists) return json({ sucesso: false, mensagem: 'Turma não encontrada.' }, 404);
+      const currentRows = await env.DB.prepare('SELECT id_aluno FROM turma_alunos WHERE id_turma = ?').bind(parts[1]).all();
+      const currentIds = new Set((currentRows.results || []).map((row) => row.id_aluno));
+      const changedIds = memberIds.filter((idAluno) => payload.acao === 'adicionar' ? !currentIds.has(idAluno) : currentIds.has(idAluno));
       if (payload.acao === 'adicionar') {
         await env.DB.batch(memberIds.map((idAluno) => env.DB.prepare('INSERT OR IGNORE INTO turma_alunos (id_turma,id_aluno) VALUES (?,?)').bind(parts[1], idAluno)));
       } else {
         await env.DB.batch(memberIds.map((idAluno) => env.DB.prepare('DELETE FROM turma_alunos WHERE id_turma = ? AND id_aluno = ?').bind(parts[1], idAluno)));
+      }
+      if (changedIds.length) {
+        const placeholders = changedIds.map(() => '?').join(',');
+        const studentRows = await env.DB.prepare(`SELECT id_aluno,nome_completo FROM alunos WHERE id_aluno IN (${placeholders})`).bind(...changedIds).all();
+        const names = new Map((studentRows.results || []).map((row) => [row.id_aluno, row.nome_completo]));
+        for (const idAluno of changedIds) {
+          await recordAudit(env.DB, session, { acao: payload.acao === 'adicionar' ? 'ALUNO_ADICIONADO_TURMA' : 'ALUNO_REMOVIDO_TURMA',
+            entidade: 'TURMA_MEMBRO', entidadeId: `${parts[1]}:${idAluno}`,
+            descricao: `${names.get(idAluno) || idAluno} ${payload.acao === 'adicionar' ? 'adicionado à' : 'removido da'} turma ${turmaExists.nome}.`,
+            antes: payload.acao === 'remover' ? { idTurma: parts[1], idAluno } : null,
+            depois: payload.acao === 'adicionar' ? { idTurma: parts[1], idAluno } : null });
+        }
       }
       await env.DB.prepare('UPDATE turmas SET updated_at = CURRENT_TIMESTAMP WHERE id_turma = ?').bind(parts[1]).run();
       const updated = (await listTurmas(env.DB)).find((turma) => turma.idTurma === parts[1]);
@@ -476,12 +620,13 @@ export async function onRequest(context) {
       return json({ sucesso: true, turma: updated });
     }
     if (request.method === 'PUT' && parts[0] === 'turmas' && parts[1]) {
+      if (!canWrite(session)) return json({ sucesso: false, mensagem: 'Seu perfil não pode alterar turmas.' }, 403);
       const payload = await body(request);
       const turma = { ...payload.turma, idTurma: parts[1] };
       if (!turma.nome || !['Teatro', 'Música'].includes(turma.curso) || !['Manhã', 'Tarde', 'Noite', 'Núcleo'].includes(turma.horario)) {
         return json({ sucesso: false, mensagem: 'Dados da turma inválidos.' }, 400);
       }
-      const existing = await env.DB.prepare('SELECT id_turma FROM turmas WHERE id_turma = ?').bind(turma.idTurma).first();
+      const existing = (await listTurmas(env.DB)).find((item) => item.idTurma === turma.idTurma) || null;
       await env.DB.prepare(`INSERT INTO turmas (id_turma,nome,curso,horario,nivel,ano_semestre,criada_por,pre_criada,ativa)
           VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id_turma) DO UPDATE SET nome=excluded.nome,curso=excluded.curso,
           horario=excluded.horario,nivel=excluded.nivel,ano_semestre=excluded.ano_semestre,criada_por=excluded.criada_por,
@@ -491,13 +636,19 @@ export async function onRequest(context) {
         await env.DB.batch([...new Set(turma.alunosIds)].map((idAluno) => env.DB.prepare('INSERT OR IGNORE INTO turma_alunos (id_turma,id_aluno) VALUES (?,?)').bind(turma.idTurma, idAluno)));
       }
       const updated = (await listTurmas(env.DB)).find((item) => item.idTurma === turma.idTurma);
+      await recordAudit(env.DB, session, { acao: existing ? 'TURMA_EDITADA' : 'TURMA_CRIADA', entidade: 'TURMA', entidadeId: turma.idTurma,
+        descricao: `${existing ? 'Turma atualizada' : 'Turma criada'}: ${turma.nome}.`, antes: existing, depois: updated });
       await enqueue(env.DB, 'turma', turma.idTurma, 'salvar', { action: 'salvarTurma', body: { turma: updated } });
       context.waitUntil(flushOutbox(env));
       return json({ sucesso: true, turma: updated });
     }
     if (request.method === 'DELETE' && parts[0] === 'turmas' && parts[1]) {
       if (!isAdmin(session)) return json({ sucesso: false, mensagem: 'Apenas o administrador pode excluir turmas.' }, 403);
+      const existing = (await listTurmas(env.DB)).find((item) => item.idTurma === parts[1]);
+      if (!existing) return json({ sucesso: false, mensagem: 'Turma não encontrada.' }, 404);
       await env.DB.prepare('DELETE FROM turmas WHERE id_turma = ?').bind(parts[1]).run();
+      await recordAudit(env.DB, session, { acao: 'TURMA_EXCLUIDA', entidade: 'TURMA', entidadeId: parts[1],
+        descricao: `Turma excluída: ${existing.nome}.`, antes: existing });
       await enqueue(env.DB, 'turma', parts[1], 'excluir', { action: 'excluirTurma', body: { idTurma: parts[1] } });
       context.waitUntil(flushOutbox(env));
       return json({ sucesso: true });

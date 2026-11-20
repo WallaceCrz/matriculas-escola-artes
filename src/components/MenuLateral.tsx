@@ -1,12 +1,12 @@
 import React from 'react';
-import { ChevronRight, Home, Search, Settings, UsersRound } from 'lucide-react';
+import { ChevronRight, History, Home, Search, Settings, UsersRound } from 'lucide-react';
 import { SessaoUsuario } from '../services/auth';
 import { TelaApp } from './MenuInicial';
 
 export const MenuLateral: React.FC<{sessao:SessaoUsuario; atual:TelaApp; onAbrir:(t:TelaApp)=>void}> = ({sessao,atual,onAbrir}) => {
   const itens = [
     ['inicio','Início',Home], ['turmas','Turmas',UsersRound], ['consulta','Consulta',Search],
-    ...(sessao.admin ? [['configuracoes','Configurações',Settings]] : []),
+    ...(sessao.admin ? [['auditoria','Histórico',History], ['configuracoes','Configurações',Settings]] : []),
   ] as [TelaApp,string,React.ElementType][];
   return <aside className="group/sidebar hidden md:block w-[72px] hover:w-60 shrink-0 overflow-hidden bg-white border-r border-slate-200 p-3 transition-[width] duration-300 ease-out">
     <p className="h-8 px-3 pt-2 whitespace-nowrap text-[10px] uppercase tracking-widest font-black text-slate-400 opacity-0 group-hover/sidebar:opacity-100 transition-opacity">Painel de trabalho</p>

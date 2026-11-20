@@ -2,6 +2,8 @@
 
 Aplicativo React + Vite para cadastro de alunos e matrículas. O Cloudflare D1 é a fonte principal dos dados; Google Sheets, Google Drive e Google Apps Script são usados para backup, fotos e integrações.
 
+Documentação completa de funcionalidades, banco, correções, publicações e pendências: [DOCUMENTACAO.md](DOCUMENTACAO.md).
+
 ## Recursos da versão 1.0
 
 - Cadastro, edição e exclusão de alunos e matrículas no D1, com sincronização da planilha em segundo plano.
